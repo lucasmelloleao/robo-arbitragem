@@ -113,12 +113,24 @@ function assertLiveTradingCredentials(exchangeId) {
 
 function getExchangeProxySettings(exchangeId) {
     const httpProxy = getExchangeSetting(exchangeId, 'HTTP_PROXY_URL') || getExchangeSetting(exchangeId, 'HTTP_PROXY');
-    const httpsProxy = getExchangeSetting(exchangeId, 'HTTPS_PROXY_URL') || getExchangeSetting(exchangeId, 'HTTPS_PROXY') || httpProxy;
-    const wsProxy = getExchangeSetting(exchangeId, 'WS_PROXY_URL') || getExchangeSetting(exchangeId, 'WS_PROXY') || httpProxy;
-    const wssProxy = getExchangeSetting(exchangeId, 'WSS_PROXY_URL') || getExchangeSetting(exchangeId, 'WSS_PROXY') || httpsProxy;
+    const httpsProxy = getExchangeSetting(exchangeId, 'HTTPS_PROXY_URL') || getExchangeSetting(exchangeId, 'HTTPS_PROXY');
+    const wsProxy = getExchangeSetting(exchangeId, 'WS_PROXY_URL') || getExchangeSetting(exchangeId, 'WS_PROXY');
+    const wssProxy = getExchangeSetting(exchangeId, 'WSS_PROXY_URL') || getExchangeSetting(exchangeId, 'WSS_PROXY');
+
+    const restProxySettings = httpsProxy
+        ? { httpsProxy }
+        : httpProxy
+            ? { httpProxy }
+            : {};
+
+    const websocketProxySettings = wssProxy
+        ? { wssProxy }
+        : wsProxy
+            ? { wsProxy }
+            : {};
 
     return Object.fromEntries(
-        Object.entries({ httpProxy, httpsProxy, wsProxy, wssProxy }).filter(([, value]) => Boolean(value))
+        Object.entries({ ...restProxySettings, ...websocketProxySettings }).filter(([, value]) => Boolean(value))
     );
 }
 
