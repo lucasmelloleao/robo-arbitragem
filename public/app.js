@@ -22,7 +22,7 @@ const marketMakingActiveExecution = document.getElementById('market-making-activ
 const marketMakingFavorableOpportunities = document.getElementById('market-making-favorable-opportunities');
 const marketMakingHistory = document.getElementById('market-making-history');
 
-const ALL_EXCHANGES = ['binance', 'kraken', 'bybit', 'gateio', 'okx'];
+const ALL_EXCHANGES = ['binance', 'kraken', 'bybit', 'coinbase', 'gateio', 'okx'];
 const exchangeViews = new Map();
 const activeSubscriptions = new Set();
 const activeMarketMakingSubscriptions = new Set();
@@ -49,6 +49,7 @@ function getExchangeTitle(exchangeId) {
         binance: 'Binance',
         kraken: 'Kraken',
         bybit: 'Bybit',
+        coinbase: 'Coinbase',
         gateio: 'Gate.io',
         okx: 'OKX'
     };

@@ -39,6 +39,10 @@ function getExchangeCredentialDefinition(exchangeId) {
             apiKey: ['BYBIT_API_KEY'],
             secret: ['BYBIT_SECRET_KEY']
         },
+        coinbase: {
+            apiKey: ['COINBASE_API_KEY'],
+            secret: ['COINBASE_SECRET_KEY']
+        },
         gateio: {
             apiKey: ['GATE_API_KEY', 'GATEIO_API_KEY'],
             secret: ['GATE_SECRET_KEY', 'GATEIO_SECRET_KEY']
@@ -110,9 +114,15 @@ function getExchangeTimeoutSettings(exchangeId) {
     return { timeout };
 }
 
+function shouldUsePrivateApi(exchangeId) {
+    return (getExchangeSetting(exchangeId, 'MARKET_MAKING_MODE') || 'simulation').trim().toLowerCase() === 'live';
+}
+
 function createExchange(exchangeId) {
     const normalizedExchangeId = normalizeExchangeId(exchangeId);
-    const credentials = resolveExchangeCredentials(normalizedExchangeId);
+    const credentials = shouldUsePrivateApi(normalizedExchangeId)
+        ? resolveExchangeCredentials(normalizedExchangeId)
+        : {};
     const timeoutSettings = getExchangeTimeoutSettings(normalizedExchangeId);
 
     if (normalizedExchangeId === 'kraken') {
@@ -127,6 +137,10 @@ function createExchange(exchangeId) {
         return new ccxt.bybit({ apiKey: credentials.apiKey, secret: credentials.secret, enableRateLimit: true, ...timeoutSettings, options: { defaultType: 'spot' } });
     }
 
+    if (normalizedExchangeId === 'coinbase') {
+        return new ccxt.coinbase({ apiKey: credentials.apiKey, secret: credentials.secret, enableRateLimit: true, ...timeoutSettings, options: { fetchCurrencies: false, v2CloudAPiKey: true } });
+    }
+
     if (normalizedExchangeId === 'gateio') {
         return new ccxt.gate({ apiKey: credentials.apiKey, secret: credentials.secret, enableRateLimit: true, ...timeoutSettings, options: { defaultType: 'spot' } });
     }
@@ -139,7 +153,7 @@ function createExchange(exchangeId) {
 }
 
 function getDefaultSymbol(exchangeId) {
-    return exchangeId === 'kraken' ? 'BTC/USD' : 'BTC/USDT';
+    return ['kraken', 'coinbase'].includes(exchangeId) ? 'BTC/USD' : 'BTC/USDT';
 }
 
 function isFinalOrderStatus(status) {

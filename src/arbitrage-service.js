@@ -52,6 +52,10 @@ function getExchangeCredentialDefinition(exchangeId) {
             apiKey: ['BYBIT_API_KEY'],
             secret: ['BYBIT_SECRET_KEY']
         },
+        coinbase: {
+            apiKey: ['COINBASE_API_KEY'],
+            secret: ['COINBASE_SECRET_KEY']
+        },
         gateio: {
             apiKey: ['GATE_API_KEY', 'GATEIO_API_KEY'],
             secret: ['GATE_SECRET_KEY', 'GATEIO_SECRET_KEY']
@@ -66,7 +70,7 @@ function getExchangeCredentialDefinition(exchangeId) {
     const definition = definitions[normalizedExchangeId];
 
     if (!definition) {
-        throw new Error(`Exchange inválida: ${normalizedExchangeId}. Use "binance", "kraken", "bybit", "gateio" ou "okx".`);
+        throw new Error(`Exchange inválida: ${normalizedExchangeId}. Use "binance", "kraken", "bybit", "coinbase", "gateio" ou "okx".`);
     }
 
     return definition;
@@ -116,9 +120,15 @@ function getExchangeTimeoutSettings(exchangeId) {
     return { timeout };
 }
 
+function shouldUsePrivateApi(exchangeId) {
+    return getExchangeSetting(exchangeId, 'ARBITRAGE_ENABLE_LIVE_TRADING') === 'true';
+}
+
 function createExchange(exchangeId) {
     const normalizedExchangeId = normalizeExchangeId(exchangeId);
-    const credentials = resolveExchangeCredentials(normalizedExchangeId);
+    const credentials = shouldUsePrivateApi(normalizedExchangeId)
+        ? resolveExchangeCredentials(normalizedExchangeId)
+        : {};
     const timeoutSettings = getExchangeTimeoutSettings(normalizedExchangeId);
 
     if (normalizedExchangeId === 'kraken') {
@@ -155,6 +165,19 @@ function createExchange(exchangeId) {
         });
     }
 
+    if (normalizedExchangeId === 'coinbase') {
+        return new ccxt.coinbase({
+            apiKey: credentials.apiKey,
+            secret: credentials.secret,
+            enableRateLimit: true,
+            ...timeoutSettings,
+            options: {
+                fetchCurrencies: false,
+                v2CloudAPiKey: true
+            }
+        });
+    }
+
     if (normalizedExchangeId === 'gateio') {
         return new ccxt.gate({
             apiKey: credentials.apiKey,
@@ -180,7 +203,7 @@ function createExchange(exchangeId) {
         });
     }
 
-    throw new Error(`Exchange inválida: ${normalizedExchangeId}. Use "binance", "kraken", "bybit", "gateio" ou "okx".`);
+    throw new Error(`Exchange inválida: ${normalizedExchangeId}. Use "binance", "kraken", "bybit", "coinbase", "gateio" ou "okx".`);
 }
 
 function getExchangeSetting(exchangeId, key) {
@@ -254,6 +277,21 @@ function createArbitrageService(exchangeId) {
             minProfitPercent: 0.1,
             maxSlippagePercent: 0.15,
             opportunityLogFile: path.join(rootDir, 'logs', 'arbitrage-opportunities-bybit.jsonl')
+        },
+        coinbase: {
+            startAssets: ['USD', 'USDC', 'USDT'],
+            bridgeAssets: ['BTC', 'ETH', 'SOL'],
+            targetAssets: ['ETH', 'SOL'],
+            investmentAmount: 100,
+            tradingFee: 0.004,
+            scanIntervalMs: 5000,
+            maxTrianglesPerCycle: 6,
+            orderBookDepth: 10,
+            maxSpreadPercent: 0.25,
+            minVolumeBuffer: 1.1,
+            minProfitPercent: 0.2,
+            maxSlippagePercent: 0.2,
+            opportunityLogFile: path.join(rootDir, 'logs', 'arbitrage-opportunities-coinbase.jsonl')
         },
         gateio: {
             startAssets: ['USDT'],
