@@ -134,10 +134,16 @@ function getExchangeProxySettings(exchangeId) {
     );
 }
 
+function getExchangeTimeoutSettings(exchangeId) {
+    const timeout = Math.max(1000, parseNumber(getExchangeSetting(exchangeId, 'TIMEOUT_MS'), 30000));
+    return { timeout };
+}
+
 function createExchange(exchangeId) {
     const normalizedExchangeId = normalizeExchangeId(exchangeId);
     const credentials = resolveExchangeCredentials(normalizedExchangeId);
     const proxySettings = getExchangeProxySettings(normalizedExchangeId);
+    const timeoutSettings = getExchangeTimeoutSettings(normalizedExchangeId);
 
     if (normalizedExchangeId === 'kraken') {
         return new ccxt.kraken({
@@ -145,6 +151,7 @@ function createExchange(exchangeId) {
             secret: credentials.secret,
             enableRateLimit: true,
             ...proxySettings
+            , ...timeoutSettings
         });
     }
 
@@ -154,6 +161,7 @@ function createExchange(exchangeId) {
             secret: credentials.secret,
             enableRateLimit: true,
             ...proxySettings,
+            ...timeoutSettings,
             options: {
                 defaultType: 'spot',
                 fetchCurrencies: false
@@ -167,6 +175,7 @@ function createExchange(exchangeId) {
             secret: credentials.secret,
             enableRateLimit: true,
             ...proxySettings,
+            ...timeoutSettings,
             options: {
                 defaultType: 'spot'
             }
@@ -179,6 +188,7 @@ function createExchange(exchangeId) {
             secret: credentials.secret,
             enableRateLimit: true,
             ...proxySettings,
+            ...timeoutSettings,
             options: {
                 defaultType: 'spot'
             }
@@ -192,6 +202,7 @@ function createExchange(exchangeId) {
             password: credentials.password,
             enableRateLimit: true,
             ...proxySettings,
+            ...timeoutSettings,
             options: {
                 defaultType: 'spot'
             }
