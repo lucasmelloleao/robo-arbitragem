@@ -111,15 +111,28 @@ function assertLiveTradingCredentials(exchangeId) {
     }
 }
 
+function getExchangeProxySettings(exchangeId) {
+    const httpProxy = getExchangeSetting(exchangeId, 'HTTP_PROXY_URL') || getExchangeSetting(exchangeId, 'HTTP_PROXY');
+    const httpsProxy = getExchangeSetting(exchangeId, 'HTTPS_PROXY_URL') || getExchangeSetting(exchangeId, 'HTTPS_PROXY') || httpProxy;
+    const wsProxy = getExchangeSetting(exchangeId, 'WS_PROXY_URL') || getExchangeSetting(exchangeId, 'WS_PROXY') || httpProxy;
+    const wssProxy = getExchangeSetting(exchangeId, 'WSS_PROXY_URL') || getExchangeSetting(exchangeId, 'WSS_PROXY') || httpsProxy;
+
+    return Object.fromEntries(
+        Object.entries({ httpProxy, httpsProxy, wsProxy, wssProxy }).filter(([, value]) => Boolean(value))
+    );
+}
+
 function createExchange(exchangeId) {
     const normalizedExchangeId = normalizeExchangeId(exchangeId);
     const credentials = resolveExchangeCredentials(normalizedExchangeId);
+    const proxySettings = getExchangeProxySettings(normalizedExchangeId);
 
     if (normalizedExchangeId === 'kraken') {
         return new ccxt.kraken({
             apiKey: credentials.apiKey,
             secret: credentials.secret,
-            enableRateLimit: true
+            enableRateLimit: true,
+            ...proxySettings
         });
     }
 
@@ -128,6 +141,7 @@ function createExchange(exchangeId) {
             apiKey: credentials.apiKey,
             secret: credentials.secret,
             enableRateLimit: true,
+            ...proxySettings,
             options: {
                 defaultType: 'spot'
             }
@@ -139,6 +153,7 @@ function createExchange(exchangeId) {
             apiKey: credentials.apiKey,
             secret: credentials.secret,
             enableRateLimit: true,
+            ...proxySettings,
             options: {
                 defaultType: 'spot'
             }
@@ -150,6 +165,7 @@ function createExchange(exchangeId) {
             apiKey: credentials.apiKey,
             secret: credentials.secret,
             enableRateLimit: true,
+            ...proxySettings,
             options: {
                 defaultType: 'spot'
             }
@@ -162,6 +178,7 @@ function createExchange(exchangeId) {
             secret: credentials.secret,
             password: credentials.password,
             enableRateLimit: true,
+            ...proxySettings,
             options: {
                 defaultType: 'spot'
             }

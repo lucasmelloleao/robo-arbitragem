@@ -105,28 +105,40 @@ function getMarketMakingQuoteBudgetSetting(exchangeId) {
         ?? getExchangeSetting(exchangeId, 'MARKET_MAKING_ORDER_SIZE');
 }
 
+function getExchangeProxySettings(exchangeId) {
+    const httpProxy = getExchangeSetting(exchangeId, 'HTTP_PROXY_URL') || getExchangeSetting(exchangeId, 'HTTP_PROXY');
+    const httpsProxy = getExchangeSetting(exchangeId, 'HTTPS_PROXY_URL') || getExchangeSetting(exchangeId, 'HTTPS_PROXY') || httpProxy;
+    const wsProxy = getExchangeSetting(exchangeId, 'WS_PROXY_URL') || getExchangeSetting(exchangeId, 'WS_PROXY') || httpProxy;
+    const wssProxy = getExchangeSetting(exchangeId, 'WSS_PROXY_URL') || getExchangeSetting(exchangeId, 'WSS_PROXY') || httpsProxy;
+
+    return Object.fromEntries(
+        Object.entries({ httpProxy, httpsProxy, wsProxy, wssProxy }).filter(([, value]) => Boolean(value))
+    );
+}
+
 function createExchange(exchangeId) {
     const normalizedExchangeId = normalizeExchangeId(exchangeId);
     const credentials = resolveExchangeCredentials(normalizedExchangeId);
+    const proxySettings = getExchangeProxySettings(normalizedExchangeId);
 
     if (normalizedExchangeId === 'kraken') {
-        return new ccxt.kraken({ apiKey: credentials.apiKey, secret: credentials.secret, enableRateLimit: true });
+        return new ccxt.kraken({ apiKey: credentials.apiKey, secret: credentials.secret, enableRateLimit: true, ...proxySettings });
     }
 
     if (normalizedExchangeId === 'binance') {
-        return new ccxt.binance({ apiKey: credentials.apiKey, secret: credentials.secret, enableRateLimit: true, options: { defaultType: 'spot' } });
+        return new ccxt.binance({ apiKey: credentials.apiKey, secret: credentials.secret, enableRateLimit: true, ...proxySettings, options: { defaultType: 'spot' } });
     }
 
     if (normalizedExchangeId === 'bybit') {
-        return new ccxt.bybit({ apiKey: credentials.apiKey, secret: credentials.secret, enableRateLimit: true, options: { defaultType: 'spot' } });
+        return new ccxt.bybit({ apiKey: credentials.apiKey, secret: credentials.secret, enableRateLimit: true, ...proxySettings, options: { defaultType: 'spot' } });
     }
 
     if (normalizedExchangeId === 'gateio') {
-        return new ccxt.gate({ apiKey: credentials.apiKey, secret: credentials.secret, enableRateLimit: true, options: { defaultType: 'spot' } });
+        return new ccxt.gate({ apiKey: credentials.apiKey, secret: credentials.secret, enableRateLimit: true, ...proxySettings, options: { defaultType: 'spot' } });
     }
 
     if (normalizedExchangeId === 'okx') {
-        return new ccxt.okx({ apiKey: credentials.apiKey, secret: credentials.secret, password: credentials.password, enableRateLimit: true, options: { defaultType: 'spot' } });
+        return new ccxt.okx({ apiKey: credentials.apiKey, secret: credentials.secret, password: credentials.password, enableRateLimit: true, ...proxySettings, options: { defaultType: 'spot' } });
     }
 
     throw new Error(`Exchange inválida para market making: ${normalizedExchangeId}.`);
