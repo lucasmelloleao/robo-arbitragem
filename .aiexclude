@@ -1,0 +1,43 @@
+
+
+## Conteúdo sugerido para o seu .aiexclude:
+
+# --- Dependências (Essencial) ---
+node_modules/
+vendor/
+bower_components/
+
+# --- Pastas de build/compilação ---
+dist/
+build/
+out/
+bin/
+obj/
+.next/
+.nuxt/
+.vite/
+
+# --- Logs e Dados ---
+*.log
+npm-debug.log*
+yarn-debug.log*
+*.sqlite
+*.db
+
+# --- Variáveis de ambiente (Segurança) ---
+.env
+.env.*
+
+# --- Arquivos de sistema e Cache ---
+.cache/
+.vscode/
+.DS_Store
+
+# --- Imagens e Binários ---
+*.png
+*.jpg
+*.jpeg
+*.svg
+*.exe
+*.dll
+*.so
