@@ -138,7 +138,7 @@ function createExchange(exchangeId) {
     }
 
     if (normalizedExchangeId === 'binance') {
-        return new ccxt.binance({ apiKey: credentials.apiKey, secret: credentials.secret, enableRateLimit: true, ...proxySettings, options: { defaultType: 'spot' } });
+        return new ccxt.binance({ apiKey: credentials.apiKey, secret: credentials.secret, enableRateLimit: true, ...proxySettings, options: { defaultType: 'spot', fetchCurrencies: false } });
     }
 
     if (normalizedExchangeId === 'bybit') {

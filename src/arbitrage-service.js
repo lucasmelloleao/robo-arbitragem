@@ -155,7 +155,8 @@ function createExchange(exchangeId) {
             enableRateLimit: true,
             ...proxySettings,
             options: {
-                defaultType: 'spot'
+                defaultType: 'spot',
+                fetchCurrencies: false
             }
         });
     }
