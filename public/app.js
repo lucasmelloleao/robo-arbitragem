@@ -1263,7 +1263,7 @@ window.addEventListener('beforeunload', () => {
 const visibleExchanges = getVisibleExchanges();
 
 if (visibleExchanges.length === 1) {
-    runScan(visibleExchanges[0]).catch((error) => {
+    toggleAutoScan(visibleExchanges[0]).catch((error) => {
         feedback.textContent = error.message;
     });
     loadMarketMakingStatus().catch((error) => {
