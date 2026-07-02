@@ -52,6 +52,10 @@ function getExchangeCredentialDefinition(exchangeId) {
             apiKey: ['BYBIT_API_KEY'],
             secret: ['BYBIT_SECRET_KEY']
         },
+        mexc: {
+            apiKey: ['MEXC_API_KEY'],
+            secret: ['MEXC_SECRET_KEY']
+        },
         coinbase: {
             apiKey: ['COINBASE_API_KEY'],
             secret: ['COINBASE_SECRET_KEY']
@@ -70,7 +74,7 @@ function getExchangeCredentialDefinition(exchangeId) {
     const definition = definitions[normalizedExchangeId];
 
     if (!definition) {
-        throw new Error(`Exchange inválida: ${normalizedExchangeId}. Use "binance", "kraken", "bybit", "coinbase", "gateio" ou "okx".`);
+        throw new Error(`Exchange inválida: ${normalizedExchangeId}. Use "binance", "kraken", "bybit", "mexc", "coinbase", "gateio" ou "okx".`);
     }
 
     return definition;
@@ -165,6 +169,19 @@ function createExchange(exchangeId) {
         });
     }
 
+    if (normalizedExchangeId === 'mexc') {
+        return new ccxt.mexc({
+            apiKey: credentials.apiKey,
+            secret: credentials.secret,
+            enableRateLimit: true,
+            ...timeoutSettings,
+            options: {
+                defaultType: 'spot',
+                fetchCurrencies: false
+            }
+        });
+    }
+
     if (normalizedExchangeId === 'coinbase') {
         return new ccxt.coinbase({
             apiKey: credentials.apiKey,
@@ -203,7 +220,7 @@ function createExchange(exchangeId) {
         });
     }
 
-    throw new Error(`Exchange inválida: ${normalizedExchangeId}. Use "binance", "kraken", "bybit", "coinbase", "gateio" ou "okx".`);
+    throw new Error(`Exchange inválida: ${normalizedExchangeId}. Use "binance", "kraken", "bybit", "mexc", "coinbase", "gateio" ou "okx".`);
 }
 
 function getExchangeSetting(exchangeId, key) {
@@ -277,6 +294,21 @@ function createArbitrageService(exchangeId) {
             minProfitPercent: 0.1,
             maxSlippagePercent: 0.15,
             opportunityLogFile: path.join(rootDir, 'logs', 'arbitrage-opportunities-bybit.jsonl')
+        },
+        mexc: {
+            startAssets: ['USDT', 'USDC'],
+            bridgeAssets: ['BTC', 'ETH', 'SOL', 'XRP'],
+            targetAssets: ['ETH', 'SOL', 'XRP', 'DOGE'],
+            investmentAmount: 100,
+            tradingFee: 0.001,
+            scanIntervalMs: 3000,
+            maxTrianglesPerCycle: 8,
+            orderBookDepth: 10,
+            maxSpreadPercent: 0.2,
+            minVolumeBuffer: 1.05,
+            minProfitPercent: 0.1,
+            maxSlippagePercent: 0.15,
+            opportunityLogFile: path.join(rootDir, 'logs', 'arbitrage-opportunities-mexc.jsonl')
         },
         coinbase: {
             startAssets: ['USD', 'USDC', 'USDT'],

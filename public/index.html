@@ -29,16 +29,56 @@
                     </div>
                 </div>
             </div>
-            <p>Execute varreduras independentes em Binance, Kraken, Bybit, Coinbase, Gate.io e OKX. Cada corretora tem seu próprio botão e você pode disparar várias ao mesmo tempo.</p>
-            <div class="actions">
-                <button class="primary" id="run-all">Executar todas</button>
-                <button class="secondary" id="run-market-making">Executar Market Making</button>
-                <button class="secondary" id="listen-all">Escutar todas</button>
-                <button class="secondary" id="listen-market-making-all">Escutar MM todas</button>
-                <button class="secondary" id="refresh-all">Atualizar todos os painéis</button>
-                <span id="feedback" class="mono"></span>
+            <p>Agora as visões foram separadas: Arbitrage fica em uma área própria de varredura e Market Making fica em uma área independente de acompanhamento e execução.</p>
+            <div class="hero-workspaces">
+                <section class="workspace-callout">
+                    <div>
+                        <p class="workspace-kicker">Workspace</p>
+                        <h2>Arbitrage</h2>
+                    </div>
+                    <p>Varreduras, rotas, histórico de scans e logs por corretora.</p>
+                    <div class="actions">
+                        <button class="primary" id="run-all">Executar todas</button>
+                        <button class="secondary" id="listen-all">Escutar todas</button>
+                        <button class="secondary" id="refresh-all">Atualizar arbitrage</button>
+                    </div>
+                </section>
+                <section class="workspace-callout workspace-callout-mm">
+                    <div>
+                        <p class="workspace-kicker">Workspace</p>
+                        <h2>Market Making</h2>
+                    </div>
+                    <p>Gadgets, execução ativa, oportunidades favoráveis e histórico da estratégia.</p>
+                    <div class="actions">
+                        <button class="secondary" id="run-market-making">Executar Market Making</button>
+                        <button class="secondary" id="listen-market-making-all">Escutar MM todas</button>
+                    </div>
+                </section>
             </div>
+            <span id="feedback" class="mono"></span>
         </section>
+
+        <section class="workspace-section">
+            <div class="section-heading">
+                <div>
+                    <div class="eyebrow">Workspace</div>
+                    <h2>Arbitrage</h2>
+                </div>
+                <p>Painéis focados em scan, melhores rotas e logs persistidos.</p>
+            </div>
+            <section class="exchange-grid" id="exchange-grid"></section>
+        </section>
+
+        <section class="workspace-section">
+            <div class="section-heading">
+                <div>
+                    <div class="eyebrow">Workspace</div>
+                    <h2>Market Making</h2>
+                </div>
+                <p>Selecione a corretora nos gadgets abaixo e acompanhe o detalhamento completo no painel principal.</p>
+            </div>
+
+            <section class="exchange-grid market-making-grid" id="market-making-grid"></section>
 
         <section class="panel" id="market-making-panel">
             <div class="exchange-panel-top">
@@ -112,8 +152,7 @@
                 </div>
             </details>
         </section>
-
-        <section class="exchange-grid" id="exchange-grid"></section>
+        </section>
     </main>
 
     <script src="/app.js"></script>

@@ -8,6 +8,7 @@ const listenAllButton = document.getElementById('listen-all');
 const listenAllMarketMakingButton = document.getElementById('listen-market-making-all');
 const refreshAllButton = document.getElementById('refresh-all');
 const exchangeGrid = document.getElementById('exchange-grid');
+const marketMakingGrid = document.getElementById('market-making-grid');
 const socketStatusPill = document.getElementById('socket-status-pill');
 const socketStatusLabel = document.getElementById('socket-status-label');
 const lastUpdateLabel = document.getElementById('last-update-label');
@@ -22,8 +23,9 @@ const marketMakingActiveExecution = document.getElementById('market-making-activ
 const marketMakingFavorableOpportunities = document.getElementById('market-making-favorable-opportunities');
 const marketMakingHistory = document.getElementById('market-making-history');
 
-const ALL_EXCHANGES = ['binance', 'kraken', 'bybit', 'coinbase', 'gateio', 'okx'];
+const ALL_EXCHANGES = ['binance', 'kraken', 'bybit', 'mexc', 'coinbase', 'gateio', 'okx'];
 const exchangeViews = new Map();
+const marketMakingExchangeViews = new Map();
 const activeSubscriptions = new Set();
 const activeMarketMakingSubscriptions = new Set();
 const marketMakingStatuses = new Map();
@@ -49,6 +51,7 @@ function getExchangeTitle(exchangeId) {
         binance: 'Binance',
         kraken: 'Kraken',
         bybit: 'Bybit',
+        mexc: 'MEXC',
         coinbase: 'Coinbase',
         gateio: 'Gate.io',
         okx: 'OKX'
@@ -94,17 +97,17 @@ function updateListenMarketMakingButton() {
 }
 
 function updateExchangeMarketMakingButton(exchangeId) {
-    const view = exchangeViews.get(exchangeId);
+    const view = marketMakingExchangeViews.get(exchangeId);
 
-    if (!view?.autoMarketMakingButton) {
+    if (!view?.listenButton) {
         return;
     }
 
     const isActive = activeMarketMakingSubscriptions.has(exchangeId);
-    view.autoMarketMakingButton.textContent = isActive
+    view.listenButton.textContent = isActive
         ? `Parar MM ${getExchangeTitle(exchangeId)}`
         : `Escutar MM ${getExchangeTitle(exchangeId)}`;
-    view.autoMarketMakingButton.className = isActive ? 'primary' : 'secondary';
+    view.listenButton.className = isActive ? 'primary' : 'secondary';
 }
 
 function updateVisibleMarketMakingButtons() {
@@ -141,7 +144,6 @@ function updateCancelMarketMakingOrdersButton(activeExecution) {
 
 function createExchangePanelMarkup(exchangeId) {
     const autoScanButton = `<button class="secondary" data-role="auto-run-scan">Escutar ${getExchangeTitle(exchangeId)}</button>`;
-    const marketMakingButton = `<button class="secondary" data-role="auto-market-making">Escutar MM ${getExchangeTitle(exchangeId)}</button>`;
 
     return `
         <article class="exchange-panel" data-exchange="${exchangeId}">
@@ -153,7 +155,6 @@ function createExchangePanelMarkup(exchangeId) {
                 <div class="actions actions-compact">
                     <button class="primary" data-role="run-scan">Executar ${getExchangeTitle(exchangeId)}</button>
                     ${autoScanButton}
-                    ${marketMakingButton}
                     <button class="secondary" data-role="refresh-logs">Atualizar ${getExchangeTitle(exchangeId)}</button>
                 </div>
             </div>
@@ -168,31 +169,6 @@ function createExchangePanelMarkup(exchangeId) {
                     <span class="status-card-value" data-role="logs-status">Nenhum log carregado ainda.</span>
                 </article>
             </div>
-            <section class="panel exchange-section market-making-gadget" data-role="mm-gadget">
-                <h2>Gadget MM</h2>
-                <div class="exchange-feedback mono" data-role="mm-summary">Aguardando status de market making...</div>
-                <div class="exchange-status-meta">
-                    <article class="status-card">
-                        <span class="status-card-label">Par</span>
-                        <span class="status-card-value" data-role="mm-target">Aguardando...</span>
-                    </article>
-                    <article class="status-card">
-                        <span class="status-card-label">Última execução</span>
-                        <span class="status-card-value" data-role="mm-last-run">Aguardando...</span>
-                    </article>
-                    <article class="status-card">
-                        <span class="status-card-label">Modo / Loop</span>
-                        <span class="status-card-value" data-role="mm-mode-loop">Aguardando...</span>
-                    </article>
-                    <article class="status-card">
-                        <span class="status-card-label">Execução ativa</span>
-                        <span class="status-card-value" data-role="mm-active-status">Nenhuma</span>
-                    </article>
-                </div>
-                <div class="metrics" data-role="mm-metrics">
-                    <div class="empty">Sem dados de market making ainda.</div>
-                </div>
-            </section>
             <section class="panel exchange-section">
                 <h2>Resumo do ciclo</h2>
                 <div class="metrics" data-role="metrics"></div>
@@ -217,12 +193,52 @@ function createExchangePanelMarkup(exchangeId) {
     `;
 }
 
+function createMarketMakingPanelMarkup(exchangeId) {
+    return `
+        <article class="panel market-making-gadget" data-exchange="${exchangeId}">
+            <div class="exchange-panel-top">
+                <div>
+                    <p class="route">${getExchangeTitle(exchangeId)}</p>
+                    <div class="exchange-feedback mono" data-role="mm-summary">Aguardando status de market making...</div>
+                </div>
+                <div class="actions actions-compact">
+                    <button class="secondary" data-role="mm-select">Ver detalhes</button>
+                    <button class="secondary" data-role="mm-listen">Escutar MM ${getExchangeTitle(exchangeId)}</button>
+                </div>
+            </div>
+            <div class="exchange-status-meta">
+                <article class="status-card">
+                    <span class="status-card-label">Par</span>
+                    <span class="status-card-value" data-role="mm-target">Aguardando...</span>
+                </article>
+                <article class="status-card">
+                    <span class="status-card-label">Última execução</span>
+                    <span class="status-card-value" data-role="mm-last-run">Aguardando...</span>
+                </article>
+                <article class="status-card">
+                    <span class="status-card-label">Modo / Loop</span>
+                    <span class="status-card-value" data-role="mm-mode-loop">Aguardando...</span>
+                </article>
+                <article class="status-card">
+                    <span class="status-card-label">Execução ativa</span>
+                    <span class="status-card-value" data-role="mm-active-status">Nenhuma</span>
+                </article>
+            </div>
+            <div class="metrics" data-role="mm-metrics">
+                <div class="empty">Sem dados de market making ainda.</div>
+            </div>
+        </article>
+    `;
+}
+
 function initializeExchangePanels() {
     const visibleExchanges = getVisibleExchanges();
     exchangeGrid.innerHTML = visibleExchanges.map(createExchangePanelMarkup).join('');
+    marketMakingGrid.innerHTML = visibleExchanges.map(createMarketMakingPanelMarkup).join('');
 
     for (const exchangeId of visibleExchanges) {
         const root = exchangeGrid.querySelector(`[data-exchange="${exchangeId}"]`);
+        const marketMakingRoot = marketMakingGrid.querySelector(`[data-exchange="${exchangeId}"]`);
         const view = {
             exchangeId,
             root,
@@ -243,8 +259,19 @@ function initializeExchangePanels() {
             scanHistory: root.querySelector('[data-role="scan-history"]'),
             runButton: root.querySelector('[data-role="run-scan"]'),
             autoRunButton: root.querySelector('[data-role="auto-run-scan"]'),
-            autoMarketMakingButton: root.querySelector('[data-role="auto-market-making"]'),
             refreshButton: root.querySelector('[data-role="refresh-logs"]')
+        };
+        const marketMakingView = {
+            exchangeId,
+            root: marketMakingRoot,
+            summary: marketMakingRoot.querySelector('[data-role="mm-summary"]'),
+            target: marketMakingRoot.querySelector('[data-role="mm-target"]'),
+            lastRun: marketMakingRoot.querySelector('[data-role="mm-last-run"]'),
+            modeLoop: marketMakingRoot.querySelector('[data-role="mm-mode-loop"]'),
+            activeStatus: marketMakingRoot.querySelector('[data-role="mm-active-status"]'),
+            metrics: marketMakingRoot.querySelector('[data-role="mm-metrics"]'),
+            selectButton: marketMakingRoot.querySelector('[data-role="mm-select"]'),
+            listenButton: marketMakingRoot.querySelector('[data-role="mm-listen"]')
         };
 
         view.runButton.addEventListener('click', () => {
@@ -261,14 +288,26 @@ function initializeExchangePanels() {
             });
         }
 
-        if (view.autoMarketMakingButton) {
-            view.autoMarketMakingButton.addEventListener('click', () => {
+        if (marketMakingView.listenButton) {
+            marketMakingView.listenButton.addEventListener('click', () => {
                 toggleExchangeMarketMaking(exchangeId);
             });
         }
 
-        if (view.mmGadget) {
-            view.mmGadget.addEventListener('click', () => {
+        if (marketMakingView.root) {
+            marketMakingView.root.addEventListener('click', (event) => {
+                if (event.target.closest('button')) {
+                    return;
+                }
+
+                selectMarketMakingExchange(exchangeId).catch((error) => {
+                    marketMakingSummary.textContent = error.message;
+                });
+            });
+        }
+
+        if (marketMakingView.selectButton) {
+            marketMakingView.selectButton.addEventListener('click', () => {
                 selectMarketMakingExchange(exchangeId).catch((error) => {
                     marketMakingSummary.textContent = error.message;
                 });
@@ -276,6 +315,7 @@ function initializeExchangePanels() {
         }
 
         exchangeViews.set(exchangeId, view);
+        marketMakingExchangeViews.set(exchangeId, marketMakingView);
     }
 
     if (!selectedMarketMakingExchangeId && visibleExchanges.length > 0) {
@@ -357,13 +397,15 @@ async function toggleAutoScan(exchangeId) {
 async function toggleExchangeMarketMaking(exchangeId) {
     const view = exchangeViews.get(exchangeId);
 
-    if (!view?.autoMarketMakingButton) {
+    const marketMakingView = marketMakingExchangeViews.get(exchangeId);
+
+    if (!marketMakingView?.listenButton) {
         return;
     }
 
     selectedMarketMakingExchangeId = exchangeId;
     updateSelectedMarketMakingExchange();
-    view.autoMarketMakingButton.disabled = true;
+    marketMakingView.listenButton.disabled = true;
 
     try {
         if (activeMarketMakingSubscriptions.has(exchangeId)) {
@@ -388,7 +430,7 @@ async function toggleExchangeMarketMaking(exchangeId) {
             marketMakingSummary.textContent = error.message;
         }
     } finally {
-        view.autoMarketMakingButton.disabled = false;
+        marketMakingView.listenButton.disabled = false;
     }
 }
 
@@ -677,6 +719,43 @@ function infoMetricCard(label, value) {
     return `<article class="metric"><span class="label">${label}</span><span class="value value-compact">${value}</span></article>`;
 }
 
+function getEstimatedMarketMakingOutcome(run) {
+    if (!run) {
+        return null;
+    }
+
+    const amount = Number(run.estimatedBaseAmount);
+    const bid = Number(run.targetBid);
+    const ask = Number(run.targetAsk);
+
+    if (![amount, bid, ask].every(Number.isFinite) || amount <= 0 || bid <= 0 || ask <= 0) {
+        return null;
+    }
+
+    const estimatedCost = amount * bid;
+    const estimatedRevenue = amount * ask;
+    const estimatedPnL = estimatedRevenue - estimatedCost;
+    const estimatedPnLPercent = estimatedCost > 0 ? (estimatedPnL / estimatedCost) * 100 : 0;
+
+    return {
+        estimatedCost,
+        estimatedRevenue,
+        estimatedPnL,
+        estimatedPnLPercent,
+        isPositive: estimatedPnL >= 0
+    };
+}
+
+function formatEstimatedOutcome(outcome, currency = 'quote') {
+    if (!outcome) {
+        return 'Aguardando simulacao...';
+    }
+
+    const toneClass = outcome.isPositive ? 'positive' : 'negative';
+    const sign = outcome.isPositive ? '+' : '';
+    return `<span class="${toneClass}">${sign}${formatNumber(outcome.estimatedPnL, 6)} ${currency}</span> (${sign}${formatNumber(outcome.estimatedPnLPercent, 4)}%)`;
+}
+
 function getMarketMakingExchangeId() {
     const visibleExchanges = getVisibleExchanges();
     if (visibleExchanges.length === 1) {
@@ -694,11 +773,13 @@ function updateSelectedMarketMakingExchange() {
     const selectedExchangeId = getMarketMakingExchangeId();
 
     for (const [exchangeId, view] of exchangeViews.entries()) {
-        if (!view.mmGadget) {
+        const marketMakingView = marketMakingExchangeViews.get(exchangeId);
+
+        if (!marketMakingView?.root) {
             continue;
         }
 
-        view.mmGadget.classList.toggle('market-making-gadget-selected', exchangeId === selectedExchangeId);
+        marketMakingView.root.classList.toggle('market-making-gadget-selected', exchangeId === selectedExchangeId);
     }
 
     marketMakingPanelTitle.textContent = `Market Making · ${getExchangeTitle(selectedExchangeId)}`;
@@ -719,19 +800,19 @@ async function selectMarketMakingExchange(exchangeId) {
 }
 
 function renderExchangeMarketMakingGadget(exchangeId, status, summaryMessage) {
-    const view = exchangeViews.get(exchangeId);
+    const view = marketMakingExchangeViews.get(exchangeId);
 
-    if (!view?.mmSummary) {
+    if (!view?.summary) {
         return;
     }
 
     if (!status) {
-        view.mmSummary.textContent = 'Aguardando status de market making...';
-        view.mmTarget.textContent = 'Aguardando...';
-        view.mmLastRun.textContent = 'Aguardando...';
-        view.mmModeLoop.textContent = 'Aguardando...';
-        view.mmActiveStatus.textContent = 'Nenhuma';
-        view.mmMetrics.innerHTML = '<div class="empty">Sem dados de market making ainda.</div>';
+        view.summary.textContent = 'Aguardando status de market making...';
+        view.target.textContent = 'Aguardando...';
+        view.lastRun.textContent = 'Aguardando...';
+        view.modeLoop.textContent = 'Aguardando...';
+        view.activeStatus.textContent = 'Nenhuma';
+        view.metrics.innerHTML = '<div class="empty">Sem dados de market making ainda.</div>';
         return;
     }
 
@@ -740,17 +821,19 @@ function renderExchangeMarketMakingGadget(exchangeId, status, summaryMessage) {
     const favorableOpportunities = Array.isArray(status.favorableOpportunities) ? status.favorableOpportunities : [];
     const latestFavorable = favorableOpportunities[0] || null;
     const executionStatus = activeExecution?.status || latestRun?.execution?.status || 'Nenhuma';
+    const estimatedOutcome = getEstimatedMarketMakingOutcome(latestRun);
 
-    view.mmSummary.textContent = summaryMessage || latestRun?.summary || 'Status de market making carregado.';
-    view.mmTarget.textContent = status.configuration?.symbol || 'Aguardando...';
-    view.mmLastRun.textContent = latestRun ? formatDateTime(latestRun.timestamp) : 'Sem execução recente';
-    view.mmModeLoop.textContent = status.configuration
+    view.summary.textContent = summaryMessage || latestRun?.summary || 'Status de market making carregado.';
+    view.target.textContent = status.configuration?.symbol || 'Aguardando...';
+    view.lastRun.textContent = latestRun ? formatDateTime(latestRun.timestamp) : 'Sem execução recente';
+    view.modeLoop.textContent = status.configuration
         ? `${formatMarketMakingMode(status.configuration.mode)} · ${getMarketMakingLoopDescription(status.configuration.keepListening)}`
         : 'Aguardando...';
-    view.mmActiveStatus.textContent = executionStatus;
-    view.mmMetrics.innerHTML = latestRun
+    view.activeStatus.textContent = executionStatus;
+    view.metrics.innerHTML = latestRun
         ? [
             metricCard('Spread', `${formatNumber(latestRun.spreadPercent, 4)}%`),
+            infoMetricCard('Estimativa', formatEstimatedOutcome(estimatedOutcome, latestRun.quoteCurrency || 'quote')),
             metricCard('Favoráveis', favorableOpportunities.length),
             metricCard('Budget', formatNumber(latestRun.quoteBudget, 4)),
             metricCard('Qtd estimada', formatNumber(latestRun.estimatedBaseAmount, 8)),
@@ -795,6 +878,7 @@ function renderMarketMakingStatus(status, summaryMessage) {
     const favorableOpportunities = Array.isArray(status.favorableOpportunities)
         ? status.favorableOpportunities
         : recentRuns.filter((run) => run.status === 'favorable');
+    const estimatedOutcome = getEstimatedMarketMakingOutcome(latestRun);
     const conversionText = latestRun
         ? `${formatNumber(latestRun.quoteBudget, 4)} ${latestRun.quoteCurrency || 'quote'} -> ${formatNumber(latestRun.estimatedBaseAmount, 8)} ${latestRun.baseCurrency || 'base'} estimados`
         : 'Aguardando conversao estimada...';
@@ -831,6 +915,7 @@ function renderMarketMakingStatus(status, summaryMessage) {
                 <div class="row"><span>Modo</span><strong>${opportunity.mode}</strong></div>
                 <div class="row"><span>Execução</span><strong>${opportunity.execution?.status || 'n/a'}</strong></div>
                 <div class="row"><span>Conversão</span><strong>${formatNumber(opportunity.quoteBudget, 4)} ${opportunity.quoteCurrency || 'quote'} -> ${formatNumber(opportunity.estimatedBaseAmount, 8)} ${opportunity.baseCurrency || 'base'}</strong></div>
+                <div class="row"><span>Ganho/Perda estimado</span><strong>${formatEstimatedOutcome(getEstimatedMarketMakingOutcome(opportunity), opportunity.quoteCurrency || 'quote')}</strong></div>
                 <div class="row"><span>Spread</span><strong class="positive">${formatNumber(opportunity.spreadPercent, 4)}%</strong></div>
                 <div class="row"><span>Bid sugerido</span><strong>${formatNumber(opportunity.targetBid, 4)}</strong></div>
                 <div class="row"><span>Ask sugerido</span><strong>${formatNumber(opportunity.targetAsk, 4)}</strong></div>
@@ -845,6 +930,7 @@ function renderMarketMakingStatus(status, summaryMessage) {
                 <div class="row"><span>Status</span><strong>${run.status}</strong></div>
                 <div class="row"><span>Execução</span><strong>${run.execution?.status || 'n/a'}</strong></div>
                 <div class="row"><span>Conversão</span><strong>${formatNumber(run.quoteBudget, 4)} ${run.quoteCurrency || 'quote'} -> ${formatNumber(run.estimatedBaseAmount, 8)} ${run.baseCurrency || 'base'}</strong></div>
+                <div class="row"><span>Ganho/Perda estimado</span><strong>${formatEstimatedOutcome(getEstimatedMarketMakingOutcome(run), run.quoteCurrency || 'quote')}</strong></div>
                 <div class="row"><span>Spread</span><strong>${formatNumber(run.spreadPercent, 4)}%</strong></div>
                 <div class="row"><span>Bid sugerido</span><strong>${formatNumber(run.targetBid, 4)}</strong></div>
                 <div class="row"><span>Ask sugerido</span><strong>${formatNumber(run.targetAsk, 4)}</strong></div>
@@ -862,6 +948,7 @@ function renderMarketMakingStatus(status, summaryMessage) {
         metricCard('Mid', formatNumber(latestRun.midPrice, 4)),
         metricCard(`Orcamento (${latestRun.quoteCurrency || 'quote'})`, formatNumber(latestRun.quoteBudget, 4)),
         metricCard(`Qtd estimada (${latestRun.baseCurrency || 'base'})`, formatNumber(latestRun.estimatedBaseAmount, 8)),
+        infoMetricCard('Ganho/Perda estimado', formatEstimatedOutcome(estimatedOutcome, latestRun.quoteCurrency || 'quote')),
         metricCard('Bid sugerido', formatNumber(latestRun.targetBid, 4)),
         metricCard('Ask sugerido', formatNumber(latestRun.targetAsk, 4)),
         infoMetricCard('Conversao direta', conversionText)

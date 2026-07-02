@@ -7,6 +7,19 @@ function parseNumber(value, fallback) {
     return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function parseSymbolList(value, fallback) {
+    const symbols = String(value || fallback || '')
+        .split(',')
+        .map((item) => item.trim().toUpperCase())
+        .filter(Boolean);
+
+    if (symbols.length === 0) {
+        return [fallback];
+    }
+
+    return [...new Set(symbols)];
+}
+
 function normalizeExchangeId(exchangeId) {
     return (exchangeId || process.env.MARKET_MAKING_EXCHANGE || process.env.ARBITRAGE_EXCHANGE || 'binance').trim().toLowerCase();
 }
@@ -38,6 +51,10 @@ function getExchangeCredentialDefinition(exchangeId) {
         bybit: {
             apiKey: ['BYBIT_API_KEY'],
             secret: ['BYBIT_SECRET_KEY']
+        },
+        mexc: {
+            apiKey: ['MEXC_API_KEY'],
+            secret: ['MEXC_SECRET_KEY']
         },
         coinbase: {
             apiKey: ['COINBASE_API_KEY'],
@@ -137,6 +154,10 @@ function createExchange(exchangeId) {
         return new ccxt.bybit({ apiKey: credentials.apiKey, secret: credentials.secret, enableRateLimit: true, ...timeoutSettings, options: { defaultType: 'spot' } });
     }
 
+    if (normalizedExchangeId === 'mexc') {
+        return new ccxt.mexc({ apiKey: credentials.apiKey, secret: credentials.secret, enableRateLimit: true, ...timeoutSettings, options: { defaultType: 'spot', fetchCurrencies: false } });
+    }
+
     if (normalizedExchangeId === 'coinbase') {
         return new ccxt.coinbase({ apiKey: credentials.apiKey, secret: credentials.secret, enableRateLimit: true, ...timeoutSettings, options: { fetchCurrencies: false, v2CloudAPiKey: true } });
     }
@@ -164,14 +185,20 @@ function createMarketMakingService(exchangeId) {
     const configuredExchangeId = normalizeExchangeId(exchangeId);
     const exchange = createExchange(configuredExchangeId);
     const rootDir = path.join(__dirname, '..');
+    const configuredSymbols = parseSymbolList(
+        getExchangeSetting(configuredExchangeId, 'MARKET_MAKING_SYMBOL'),
+        getDefaultSymbol(configuredExchangeId)
+    );
     const config = {
         mode: (getExchangeSetting(configuredExchangeId, 'MARKET_MAKING_MODE') || 'simulation').trim().toLowerCase(),
         keepListening: getExchangeSetting(configuredExchangeId, 'MARKET_MAKING_KEEP_LISTENING') !== 'false',
-        symbol: getExchangeSetting(configuredExchangeId, 'MARKET_MAKING_SYMBOL') || getDefaultSymbol(configuredExchangeId),
+        symbols: configuredSymbols,
+        symbol: configuredSymbols[0],
         orderBookDepth: Math.max(1, Math.floor(parseNumber(getExchangeSetting(configuredExchangeId, 'MARKET_MAKING_ORDER_BOOK_DEPTH'), 10))),
         quoteOffsetPercent: Math.max(0, parseNumber(getExchangeSetting(configuredExchangeId, 'MARKET_MAKING_QUOTE_OFFSET_PERCENT'), 0.03)),
         minSpreadPercent: Math.max(0, parseNumber(getExchangeSetting(configuredExchangeId, 'MARKET_MAKING_MIN_SPREAD_PERCENT'), 0.05)),
         quoteBudget: Math.max(0, parseNumber(getMarketMakingQuoteBudgetSetting(configuredExchangeId), 10)),
+        maxSymbolAttempts: Math.max(1, Math.floor(parseNumber(getExchangeSetting(configuredExchangeId, 'MARKET_MAKING_MAX_SYMBOL_ATTEMPTS'), 10))),
         updateIntervalMs: Math.max(1000, parseNumber(getExchangeSetting(configuredExchangeId, 'MARKET_MAKING_UPDATE_INTERVAL_MS'), 5000)),
         opportunityLogFile: getExchangeSetting(configuredExchangeId, 'MARKET_MAKING_OPPORTUNITY_LOG_FILE') || path.join(rootDir, 'logs', `market-making-opportunities-${configuredExchangeId}.jsonl`)
     };
@@ -189,6 +216,71 @@ function createMarketMakingService(exchangeId) {
     let latestRun = null;
     const recentRuns = [];
     let activeExecution = null;
+    let currentSymbolIndex = 0;
+    let currentSymbolAttempts = 0;
+
+    function getActiveSymbol() {
+        return config.symbols[currentSymbolIndex] || config.symbol;
+    }
+
+    function syncActiveSymbol() {
+        config.symbol = getActiveSymbol();
+        return config.symbol;
+    }
+
+    function rotateActiveSymbol(reason) {
+        if (config.symbols.length <= 1) {
+            return null;
+        }
+
+        const previousSymbol = getActiveSymbol();
+        currentSymbolIndex = (currentSymbolIndex + 1) % config.symbols.length;
+        currentSymbolAttempts = 0;
+        const nextSymbol = syncActiveSymbol();
+
+        return {
+            reason,
+            previousSymbol,
+            nextSymbol
+        };
+    }
+
+    function registerAttemptOutcome(outcome) {
+        if (outcome === 'success' || outcome === 'pending') {
+            currentSymbolAttempts = 0;
+            return null;
+        }
+
+        currentSymbolAttempts += 1;
+
+        if (currentSymbolAttempts < config.maxSymbolAttempts) {
+            return null;
+        }
+
+        return rotateActiveSymbol('max-attempts-reached');
+    }
+
+    function getAttemptOutcome({ mode, pendingExecution, execution }) {
+        if (pendingExecution) {
+            return 'pending';
+        }
+
+        if (mode === 'live' && ['placed', 'waiting-orders', 'completed'].includes(execution?.status)) {
+            return 'success';
+        }
+
+        return 'failed';
+    }
+
+    function attachRotationSummary(result, rotation) {
+        if (!rotation) {
+            return result;
+        }
+
+        result.nextSymbol = rotation.nextSymbol;
+        result.summary = `${result.summary} ${config.maxSymbolAttempts} tentativa(s) sem execucao em ${rotation.previousSymbol}. Proximo ciclo usara ${rotation.nextSymbol}.`;
+        return result;
+    }
 
     async function appendOpportunityLog(entry) {
         const logDir = path.dirname(config.opportunityLogFile);
@@ -447,118 +539,164 @@ function createMarketMakingService(exchangeId) {
     }
 
     async function run() {
-        await exchange.loadMarkets();
+        const activeSymbol = syncActiveSymbol();
 
-        if (!exchange.markets[config.symbol]) {
-            throw new Error(`O par ${config.symbol} não está disponível em ${configuredExchangeId}.`);
-        }
+        try {
+            await exchange.loadMarkets();
 
-        const orderBook = await exchange.fetchOrderBook(config.symbol, config.orderBookDepth);
-        const bestBid = orderBook?.bids?.[0];
-        const bestAsk = orderBook?.asks?.[0];
-
-        if (!Array.isArray(bestBid) || !Array.isArray(bestAsk)) {
-            throw new Error(`Livro insuficiente para market making em ${config.symbol}.`);
-        }
-
-        const bidPrice = bestBid[0];
-        const askPrice = bestAsk[0];
-        const midPrice = (bidPrice + askPrice) / 2;
-        const spreadPercent = midPrice > 0 ? ((askPrice - bidPrice) / midPrice) * 100 : 0;
-        const targetBid = bidPrice * (1 - (config.quoteOffsetPercent / 100));
-        const targetAsk = askPrice * (1 + (config.quoteOffsetPercent / 100));
-        const status = spreadPercent >= config.minSpreadPercent ? 'favorable' : 'tight';
-        const timestamp = new Date().toISOString();
-        const market = exchange.market(config.symbol);
-        const quoteBudget = Number(exchange.costToPrecision(config.symbol, config.quoteBudget));
-        const estimatedBaseAmount = getBaseAmountFromQuoteBudget(targetBid);
-        const pendingExecution = config.mode === 'live' ? await refreshActiveExecution() : null;
-
-        const result = {
-            timestamp,
-            mode: config.mode,
-            exchange: configuredExchangeId,
-            symbol: config.symbol,
-            baseCurrency: market?.base || config.symbol.split('/')[0],
-            quoteCurrency: market?.quote || config.symbol.split('/')[1] || 'USDT',
-            bestBid: bidPrice,
-            bestAsk: askPrice,
-            bestBidVolume: bestBid[1],
-            bestAskVolume: bestAsk[1],
-            midPrice,
-            spreadPercent,
-            targetBid,
-            targetAsk,
-            orderSize: config.quoteBudget,
-            quoteBudget,
-            estimatedBaseAmount,
-            quoteOffsetPercent: config.quoteOffsetPercent,
-            minSpreadPercent: config.minSpreadPercent,
-            status: pendingExecution ? 'waiting-orders' : status,
-            summary: status === 'favorable'
-                ? 'Spread suficiente para publicar bid e ask.'
-                : 'Spread apertado; aguarde melhor abertura antes de cotar.'
-        };
-
-        if (pendingExecution) {
-            result.execution = pendingExecution;
-            result.summary = 'Ordens anteriores ainda estao abertas ou pendentes. Nenhuma nova ordem sera enviada ate a conclusao da execucao atual.';
-        }
-
-        if (!pendingExecution && status === 'favorable' && config.mode === 'live') {
-            try {
-                result.execution = await executeLiveOrders(targetBid, targetAsk);
-                activeExecution = {
-                    ...result.execution,
-                    buyOrder: summarizeOrder(result.execution.buyOrder),
-                    sellOrder: summarizeOrder(result.execution.sellOrder),
-                    status: 'waiting-orders',
-                    lastCheckedAt: new Date().toISOString()
-                };
-                result.execution = summarizeExecution(activeExecution);
-                result.summary = 'Spread suficiente e ordens live enviadas com sucesso.';
-            } catch (error) {
-                result.execution = error.partialExecution || {
-                    status: 'error',
-                    message: error.message
-                };
-                result.summary = 'Spread suficiente, mas houve falha ao enviar ordens live.';
-                console.error('[market-making] falha ao enviar ordens live:', error.message);
+            if (!exchange.markets[config.symbol]) {
+                throw new Error(`O par ${config.symbol} não está disponível em ${configuredExchangeId}.`);
             }
-        }
 
-        if (!pendingExecution && status === 'favorable' && config.mode !== 'live') {
-            result.execution = {
-                status: 'simulation',
-                message: 'Modo simulation: nenhuma ordem real enviada.'
-            };
-        }
+            const orderBook = await exchange.fetchOrderBook(config.symbol, config.orderBookDepth);
+            const bestBid = orderBook?.bids?.[0];
+            const bestAsk = orderBook?.asks?.[0];
 
-        if (status === 'favorable') {
-            console.log('[market-making] oportunidade favoravel encontrada:', {
+            if (!Array.isArray(bestBid) || !Array.isArray(bestAsk)) {
+                throw new Error(`Livro insuficiente para market making em ${config.symbol}.`);
+            }
+
+            const bidPrice = bestBid[0];
+            const askPrice = bestAsk[0];
+            const midPrice = (bidPrice + askPrice) / 2;
+            const spreadPercent = midPrice > 0 ? ((askPrice - bidPrice) / midPrice) * 100 : 0;
+            const targetBid = bidPrice * (1 - (config.quoteOffsetPercent / 100));
+            const targetAsk = askPrice * (1 + (config.quoteOffsetPercent / 100));
+            const status = spreadPercent >= config.minSpreadPercent ? 'favorable' : 'tight';
+            const timestamp = new Date().toISOString();
+            const market = exchange.market(config.symbol);
+            const quoteBudget = Number(exchange.costToPrecision(config.symbol, config.quoteBudget));
+            const estimatedBaseAmount = getBaseAmountFromQuoteBudget(targetBid);
+            const pendingExecution = config.mode === 'live' ? await refreshActiveExecution() : null;
+
+            const result = {
                 timestamp,
-                exchange: configuredExchangeId,
                 mode: config.mode,
+                exchange: configuredExchangeId,
                 symbol: config.symbol,
+                configuredSymbols: [...config.symbols],
+                symbolAttempt: currentSymbolAttempts + 1,
+                maxSymbolAttempts: config.maxSymbolAttempts,
+                baseCurrency: market?.base || config.symbol.split('/')[0],
+                quoteCurrency: market?.quote || config.symbol.split('/')[1] || 'USDT',
+                bestBid: bidPrice,
+                bestAsk: askPrice,
+                bestBidVolume: bestBid[1],
+                bestAskVolume: bestAsk[1],
+                midPrice,
                 spreadPercent,
-                minSpreadPercent: config.minSpreadPercent,
                 targetBid,
                 targetAsk,
-                quoteBudget: config.quoteBudget,
-                executionStatus: result.execution?.status || 'not-applicable'
+                orderSize: config.quoteBudget,
+                quoteBudget,
+                estimatedBaseAmount,
+                quoteOffsetPercent: config.quoteOffsetPercent,
+                minSpreadPercent: config.minSpreadPercent,
+                status: pendingExecution ? 'waiting-orders' : status,
+                summary: status === 'favorable'
+                    ? 'Spread suficiente para publicar bid e ask.'
+                    : 'Spread apertado; aguarde melhor abertura antes de cotar.'
+            };
+
+            if (pendingExecution) {
+                result.execution = pendingExecution;
+                result.summary = 'Ordens anteriores ainda estao abertas ou pendentes. Nenhuma nova ordem sera enviada ate a conclusao da execucao atual.';
+            }
+
+            if (!pendingExecution && status === 'favorable' && config.mode === 'live') {
+                try {
+                    result.execution = await executeLiveOrders(targetBid, targetAsk);
+                    activeExecution = {
+                        ...result.execution,
+                        buyOrder: summarizeOrder(result.execution.buyOrder),
+                        sellOrder: summarizeOrder(result.execution.sellOrder),
+                        status: 'waiting-orders',
+                        lastCheckedAt: new Date().toISOString()
+                    };
+                    result.execution = summarizeExecution(activeExecution);
+                    result.summary = 'Spread suficiente e ordens live enviadas com sucesso.';
+                } catch (error) {
+                    result.execution = error.partialExecution || {
+                        status: 'error',
+                        message: error.message
+                    };
+                    result.summary = 'Spread suficiente, mas houve falha ao enviar ordens live.';
+                    console.error('[market-making] falha ao enviar ordens live:', error.message);
+                }
+            }
+
+            if (!pendingExecution && status === 'favorable' && config.mode !== 'live') {
+                result.execution = {
+                    status: 'simulation',
+                    message: 'Modo simulation: nenhuma ordem real enviada.'
+                };
+            }
+
+            const rotation = registerAttemptOutcome(getAttemptOutcome({
+                mode: config.mode,
+                pendingExecution,
+                execution: result.execution
+            }));
+            attachRotationSummary(result, rotation);
+
+            if (status === 'favorable') {
+                console.log('[market-making] oportunidade favoravel encontrada:', {
+                    timestamp,
+                    exchange: configuredExchangeId,
+                    mode: config.mode,
+                    symbol: config.symbol,
+                    spreadPercent,
+                    minSpreadPercent: config.minSpreadPercent,
+                    targetBid,
+                    targetAsk,
+                    quoteBudget: config.quoteBudget,
+                    executionStatus: result.execution?.status || 'not-applicable'
+                });
+
+                await appendOpportunityLog(result);
+            }
+
+            latestRun = result;
+            recentRuns.unshift(result);
+
+            if (recentRuns.length > 10) {
+                recentRuns.length = 10;
+            }
+
+            return result;
+        } catch (error) {
+            const timestamp = new Date().toISOString();
+            const result = attachRotationSummary({
+                timestamp,
+                mode: config.mode,
+                exchange: configuredExchangeId,
+                symbol: activeSymbol,
+                configuredSymbols: [...config.symbols],
+                symbolAttempt: currentSymbolAttempts + 1,
+                maxSymbolAttempts: config.maxSymbolAttempts,
+                status: 'error',
+                summary: `Falha ao analisar ${activeSymbol} para market making.`,
+                execution: {
+                    status: 'error',
+                    message: error.message
+                }
+            }, registerAttemptOutcome('failed'));
+
+            latestRun = result;
+            recentRuns.unshift(result);
+
+            if (recentRuns.length > 10) {
+                recentRuns.length = 10;
+            }
+
+            console.error('[market-making] falha ao processar ciclo:', {
+                exchange: configuredExchangeId,
+                symbol: activeSymbol,
+                message: error.message
             });
 
-            await appendOpportunityLog(result);
+            return result;
         }
-
-        latestRun = result;
-        recentRuns.unshift(result);
-
-        if (recentRuns.length > 10) {
-            recentRuns.length = 10;
-        }
-
-        return result;
     }
 
     async function getStatus() {

@@ -26,7 +26,7 @@ function getContentType(filePath) {
 }
 
 function parseExchangePath(pathname) {
-    const match = pathname.match(/^\/(binance|kraken|bybit|coinbase|gateio|okx)(?:\/|$)/i);
+    const match = pathname.match(/^\/(binance|kraken|bybit|mexc|coinbase|gateio|okx)(?:\/|$)/i);
 
     if (!match) {
         return { exchangeId: null, relativePath: pathname };
