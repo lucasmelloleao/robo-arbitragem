@@ -44,6 +44,7 @@ function createAppServer() {
     const publicDir = path.join(__dirname, '..', 'public');
     const socketSubscriptions = new Map();
     const socketMarketMakingSubscriptions = new Map();
+    const backgroundMarketMakingSubscriptions = new Map();
 
     function getService(exchangeId) {
         const resolvedExchangeId = exchangeId || (process.env.ARBITRAGE_EXCHANGE || 'binance').trim().toLowerCase();
@@ -82,8 +83,77 @@ function createAppServer() {
         const service = getMarketMakingService(exchangeId);
         const run = await service.run();
         const status = await service.getStatus();
-        sendSocketMessage(socket, { type: 'market-making-update', exchangeId: status.exchange, payload: status });
+
+        if (socket) {
+            sendSocketMessage(socket, { type: 'market-making-update', exchangeId: status.exchange, payload: status });
+        }
+
         return { run, status, config: service.getConfig() };
+    }
+
+    async function startBackgroundMarketMaking(exchangeId) {
+        const resolvedExchangeId = exchangeId || (process.env.MARKET_MAKING_EXCHANGE || process.env.ARBITRAGE_EXCHANGE || 'binance').trim().toLowerCase();
+
+        if (backgroundMarketMakingSubscriptions.has(resolvedExchangeId)) {
+            const currentSubscription = backgroundMarketMakingSubscriptions.get(resolvedExchangeId);
+            return {
+                exchangeId: resolvedExchangeId,
+                subscribed: true,
+                intervalMs: currentSubscription.intervalMs,
+                symbol: currentSubscription.symbol,
+                keepListening: currentSubscription.keepListening
+            };
+        }
+
+        const service = getMarketMakingService(resolvedExchangeId);
+        const config = service.getConfig();
+        const subscription = {
+            intervalMs: config.updateIntervalMs,
+            symbol: config.symbol,
+            keepListening: config.keepListening,
+            intervalId: null,
+            running: false
+        };
+
+        const runSubscriptionCycle = async () => {
+            if (subscription.running) {
+                return;
+            }
+
+            subscription.running = true;
+
+            try {
+                const { run } = await pushMarketMakingUpdate(null, resolvedExchangeId);
+
+                const stopAfterSuccessInLive = run?.mode === 'live' && ['placed', 'waiting-orders'].includes(run?.execution?.status);
+                const stopAfterFavorableInSimulation = run?.mode !== 'live' && run?.status === 'favorable';
+
+                if (!subscription.keepListening && (stopAfterSuccessInLive || stopAfterFavorableInSimulation)) {
+                    clearInterval(subscription.intervalId);
+                    backgroundMarketMakingSubscriptions.delete(resolvedExchangeId);
+                    console.log(`[market-making] loop em background encerrado para ${resolvedExchangeId}: ${stopAfterSuccessInLive ? 'live-orders-created' : 'favorable-opportunity-found'}`);
+                }
+            } catch (error) {
+                console.error(`[market-making] falha no loop em background para ${resolvedExchangeId}: ${error.message}`);
+            } finally {
+                subscription.running = false;
+            }
+        };
+
+        subscription.intervalId = setInterval(() => {
+            runSubscriptionCycle();
+        }, subscription.intervalMs);
+
+        backgroundMarketMakingSubscriptions.set(resolvedExchangeId, subscription);
+        await runSubscriptionCycle();
+
+        return {
+            exchangeId: resolvedExchangeId,
+            subscribed: true,
+            intervalMs: subscription.intervalMs,
+            symbol: subscription.symbol,
+            keepListening: subscription.keepListening
+        };
     }
 
     function getSocketExchangeSubscriptions(socket) {
@@ -436,6 +506,8 @@ function createAppServer() {
             console.log('[ws] cliente desconectado de /ws');
         });
     });
+
+    server.startBackgroundMarketMaking = startBackgroundMarketMaking;
 
     return server;
 }
