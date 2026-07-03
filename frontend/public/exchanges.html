@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerenciamento de Corretoras</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <main class="shell">
+        <section class="hero">
+            <div class="hero-top">
+                <div>
+                    <div class="eyebrow">Configuracoes</div>
+                    <h1>Gerenciamento de Corretoras</h1>
+                </div>
+                <div class="hero-status-group">
+                    <a href="/" class="secondary" style="text-decoration: none; padding: 10px 20px;">Voltar ao painel</a>
+                </div>
+            </div>
+            <p>Cadastre, altere, ative ou remova corretoras sem carregar o dashboard operacional completo.</p>
+        </section>
+
+        <section class="workspace-section">
+            <div class="section-heading">
+                <div>
+                    <div class="eyebrow">Cadastro</div>
+                    <h2>Exchanges</h2>
+                </div>
+                <p>A edicao preserva as credenciais atuais quando API Key e Secret Key ficam em branco.</p>
+            </div>
+
+            <section class="panel management-panel management-panel-accent">
+                <div class="section-heading section-heading-compact">
+                    <div>
+                        <div class="eyebrow">Corretoras</div>
+                        <h2>Cadastro de Exchanges</h2>
+                    </div>
+                    <div class="actions actions-compact">
+                        <button class="secondary" id="btn-sync-exchange-env">Sincronizar .env</button>
+                        <button class="primary" id="btn-show-exchange-form">Nova Corretora</button>
+                    </div>
+                </div>
+                <div id="exchange-sync-feedback" class="mono form-feedback"></div>
+
+                <div class="form-shell" id="exchange-form-container" hidden>
+                    <form id="exchange-form" class="data-form">
+                        <div class="form-header">
+                            <div>
+                                <h3 id="exchange-form-title">Cadastrar corretora</h3>
+                                <p id="exchange-form-hint">Informe nome, sigla e credenciais para habilitar a integracao.</p>
+                            </div>
+                        </div>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="exchange-name">Nome</label>
+                                <input type="text" id="exchange-name" name="name" required placeholder="Ex.: Binance Futures">
+                            </div>
+                            <div class="form-group">
+                                <label for="exchange-acronym">Sigla</label>
+                                <input type="text" id="exchange-acronym" name="acronym" required maxlength="10" placeholder="Ex.: BNBX">
+                            </div>
+                            <div class="form-group">
+                                <label for="exchange-api-key">API Key</label>
+                                <input type="text" id="exchange-api-key" name="apiKey" placeholder="Informe a API Key">
+                            </div>
+                            <div class="form-group">
+                                <label for="exchange-secret-key">Secret Key</label>
+                                <input type="password" id="exchange-secret-key" name="secretKey" placeholder="Informe a Secret Key">
+                            </div>
+                            <div class="form-group" id="exchange-password-group" hidden>
+                                <label for="exchange-password" id="exchange-password-label">Passphrase</label>
+                                <input type="password" id="exchange-password" name="password" placeholder="Opcional para exchanges como OKX">
+                            </div>
+                            <div class="form-group form-group-wide">
+                                <label for="exchange-notes">Observacoes</label>
+                                <textarea id="exchange-notes" name="notes" rows="3" placeholder="Anotacoes operacionais, ambiente, observacoes de uso..."></textarea>
+                            </div>
+                            <label class="toggle-field" for="exchange-active">
+                                <input type="checkbox" id="exchange-active" name="active" checked>
+                                <span>Corretora ativa para operacao</span>
+                            </label>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="primary" id="exchange-form-submit">Salvar corretora</button>
+                            <button type="button" class="secondary" id="btn-cancel-exchange-form">Cancelar</button>
+                        </div>
+                        <div id="exchange-form-feedback" class="mono form-feedback"></div>
+                    </form>
+                </div>
+
+                <div class="exchange-summary-grid">
+                    <article class="summary-chip">
+                        <span class="summary-chip-label">Total</span>
+                        <strong id="exchange-total-count">0</strong>
+                    </article>
+                    <article class="summary-chip">
+                        <span class="summary-chip-label">Ativas</span>
+                        <strong id="exchange-active-count">0</strong>
+                    </article>
+                    <article class="summary-chip">
+                        <span class="summary-chip-label">Inativas</span>
+                        <strong id="exchange-inactive-count">0</strong>
+                    </article>
+                </div>
+
+                <div id="exchange-list" class="entity-list">
+                    <div class="empty">Carregando corretoras...</div>
+                </div>
+            </section>
+        </section>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+</body>
+</html>

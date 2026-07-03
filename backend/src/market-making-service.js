@@ -1,6 +1,15 @@
 const ccxt = require('ccxt');
 const fs = require('fs/promises');
 const path = require('path');
+const { getExchangeCredentialsByAcronym } = require('./database');
+const {
+    getCredentialRequirementLabel,
+    getExchangeCredentialConfig,
+    normalizeExchangeId: normalizeSupportedExchangeId
+} = require('./exchange-credentials');
+
+const MAX_REALISTIC_SPREAD = 2.0;
+const HIGH_LIQUIDITY_ASSETS = ['SOL', 'BTC'];
 
 function parseNumber(value, fallback) {
     const parsed = Number(value);
@@ -20,96 +29,52 @@ function parseSymbolList(value, fallback) {
     return [...new Set(symbols)];
 }
 
+function isHighLiquiditySpreadAnomaly(symbol, spreadPercent) {
+    if (!Number.isFinite(spreadPercent) || spreadPercent <= MAX_REALISTIC_SPREAD) {
+        return false;
+    }
+
+    const normalizedSymbol = String(symbol || '').toUpperCase();
+    return HIGH_LIQUIDITY_ASSETS.some((asset) => normalizedSymbol.includes(asset));
+}
+
 function normalizeExchangeId(exchangeId) {
-    return (exchangeId || process.env.MARKET_MAKING_EXCHANGE || process.env.ARBITRAGE_EXCHANGE || 'binance').trim().toLowerCase();
+    return normalizeSupportedExchangeId(exchangeId || process.env.MARKET_MAKING_EXCHANGE || process.env.ARBITRAGE_EXCHANGE || 'binance');
 }
 
-function getFirstDefinedEnv(names) {
-    for (const name of names) {
-        const value = process.env[name];
-
-        if (value) {
-            return value;
-        }
-    }
-
-    return undefined;
-}
-
-function getExchangeCredentialDefinition(exchangeId) {
-    const normalizedExchangeId = normalizeExchangeId(exchangeId);
-
-    const definitions = {
-        kraken: {
-            apiKey: ['KRAKEN_API_KEY'],
-            secret: ['KRAKEN_SECRET_KEY']
-        },
-        binance: {
-            apiKey: ['BINANCE_API_KEY'],
-            secret: ['BINANCE_SECRET_KEY']
-        },
-        bybit: {
-            apiKey: ['BYBIT_API_KEY'],
-            secret: ['BYBIT_SECRET_KEY']
-        },
-        mexc: {
-            apiKey: ['MEXC_API_KEY'],
-            secret: ['MEXC_SECRET_KEY']
-        },
-        coinbase: {
-            apiKey: ['COINBASE_API_KEY'],
-            secret: ['COINBASE_SECRET_KEY']
-        },
-        gateio: {
-            apiKey: ['GATE_API_KEY', 'GATEIO_API_KEY'],
-            secret: ['GATE_SECRET_KEY', 'GATEIO_SECRET_KEY']
-        },
-        okx: {
-            apiKey: ['OKX_API_KEY'],
-            secret: ['OKX_SECRET_KEY', 'OKX_SECRET'],
-            password: ['OKX_PASSPHRASE', 'OKX_PASSWORD']
-        }
-    };
-
-    const definition = definitions[normalizedExchangeId];
-
-    if (!definition) {
-        throw new Error(`Exchange inválida para market making: ${normalizedExchangeId}.`);
-    }
-
-    return definition;
-}
-
-function getMissingCredentialGroups(exchangeId) {
-    const definition = getExchangeCredentialDefinition(exchangeId);
+async function getMissingCredentialGroups(exchangeId) {
+    const definition = getExchangeCredentialConfig(exchangeId).credentials;
+    const credentials = await resolveExchangeCredentials(exchangeId);
     const missingGroups = [];
 
-    for (const names of Object.values(definition)) {
-        if (!getFirstDefinedEnv(names)) {
-            missingGroups.push(names.join(' ou '));
+    for (const field of Object.keys(definition)) {
+        if (!credentials[field]) {
+            missingGroups.push(getCredentialRequirementLabel(exchangeId, field));
         }
     }
 
     return missingGroups;
 }
 
-function resolveExchangeCredentials(exchangeId) {
-    const definition = getExchangeCredentialDefinition(exchangeId);
-    const credentials = {};
+async function resolveExchangeCredentials(exchangeId) {
+    const normalizedExchangeId = normalizeExchangeId(exchangeId);
+    const exchangeConfig = getExchangeCredentialConfig(normalizedExchangeId);
+    const exchangeRecord = await getExchangeCredentialsByAcronym(exchangeConfig.acronym);
 
-    for (const [field, names] of Object.entries(definition)) {
-        const resolvedValue = getFirstDefinedEnv(names);
+    const credentials = {
+        apiKey: exchangeRecord?.apiKey,
+        secret: exchangeRecord?.secretKey
+    };
 
-        if (resolvedValue) {
-            credentials[field] = resolvedValue;
-        }
+    if (exchangeConfig.credentials.password) {
+        credentials.password = exchangeRecord?.password;
     }
 
     return credentials;
 }
 
-function assertLiveTradingCredentials(exchangeId) {
-    const missingGroups = getMissingCredentialGroups(exchangeId);
+async function assertLiveTradingCredentials(exchangeId) {
+    const missingGroups = await getMissingCredentialGroups(exchangeId);
 
     if (missingGroups.length > 0) {
         throw new Error(`Credenciais ausentes para ${normalizeExchangeId(exchangeId)} em modo live: ${missingGroups.join(', ')}.`);
@@ -135,10 +100,10 @@ function shouldUsePrivateApi(exchangeId) {
     return (getExchangeSetting(exchangeId, 'MARKET_MAKING_MODE') || 'simulation').trim().toLowerCase() === 'live';
 }
 
-function createExchange(exchangeId) {
+async function createExchange(exchangeId) {
     const normalizedExchangeId = normalizeExchangeId(exchangeId);
     const credentials = shouldUsePrivateApi(normalizedExchangeId)
-        ? resolveExchangeCredentials(normalizedExchangeId)
+        ? await resolveExchangeCredentials(normalizedExchangeId)
         : {};
     const timeoutSettings = getExchangeTimeoutSettings(normalizedExchangeId);
 
@@ -170,6 +135,10 @@ function createExchange(exchangeId) {
         return new ccxt.okx({ apiKey: credentials.apiKey, secret: credentials.secret, password: credentials.password, enableRateLimit: true, ...timeoutSettings, options: { defaultType: 'spot' } });
     }
 
+    if (normalizedExchangeId === 'woo') {
+        return new ccxt.woo({ apiKey: credentials.apiKey, secret: credentials.secret, enableRateLimit: true, ...timeoutSettings, options: { defaultType: 'spot' } });
+    }
+
     throw new Error(`Exchange inválida para market making: ${normalizedExchangeId}.`);
 }
 
@@ -181,10 +150,10 @@ function isFinalOrderStatus(status) {
     return ['closed', 'canceled', 'cancelled', 'rejected', 'expired'].includes((status || '').toLowerCase());
 }
 
-function createMarketMakingService(exchangeId) {
+async function createMarketMakingService(exchangeId) {
     const configuredExchangeId = normalizeExchangeId(exchangeId);
-    const exchange = createExchange(configuredExchangeId);
-    const rootDir = path.join(__dirname, '..');
+    const exchange = await createExchange(configuredExchangeId);
+    const rootDir = path.join(__dirname, '..', '..');
     const configuredSymbols = parseSymbolList(
         getExchangeSetting(configuredExchangeId, 'MARKET_MAKING_SYMBOL'),
         getDefaultSymbol(configuredExchangeId)
@@ -206,7 +175,7 @@ function createMarketMakingService(exchangeId) {
     config.orderSize = config.quoteBudget;
 
     if (config.mode === 'live') {
-        assertLiveTradingCredentials(configuredExchangeId);
+        await assertLiveTradingCredentials(configuredExchangeId);
 
         if (config.quoteBudget <= 0) {
             throw new Error(`MARKET_MAKING_QUOTE_BUDGET inválido para ${configuredExchangeId} em modo live.`);
@@ -484,13 +453,65 @@ function createMarketMakingService(exchangeId) {
         return amount;
     }
 
+    async function fetchFreeBalances() {
+        const balance = await exchange.fetchBalance();
+        const market = exchange.market(config.symbol);
+        const baseCurrency = market?.base || config.symbol.split('/')[0];
+        const quoteCurrency = market?.quote || config.symbol.split('/')[1] || 'USDT';
+        const freeBase = parseNumber(balance?.free?.[baseCurrency], 0);
+        const freeQuote = parseNumber(balance?.free?.[quoteCurrency], 0);
+
+        return {
+            baseCurrency,
+            quoteCurrency,
+            freeBase,
+            freeQuote
+        };
+    }
+
+    async function resolveLiveOrderAmount(targetBid, plannedAmount) {
+        const balances = await fetchFreeBalances();
+        const maxBuyAmount = balances.freeQuote > 0
+            ? Number(exchange.amountToPrecision(config.symbol, balances.freeQuote / targetBid))
+            : 0;
+        const supportedAmount = Math.min(plannedAmount, balances.freeBase, maxBuyAmount);
+        const adjustedAmount = Number(exchange.amountToPrecision(config.symbol, supportedAmount));
+
+        if (!Number.isFinite(adjustedAmount) || adjustedAmount <= 0) {
+            throw new Error(
+                `Saldo livre insuficiente para market making em ${config.symbol}. `
+                + `Disponivel: ${balances.freeBase} ${balances.baseCurrency} e ${balances.freeQuote} ${balances.quoteCurrency}. `
+                + `Necessario aproximadamente: ${plannedAmount} ${balances.baseCurrency} e ${config.quoteBudget} ${balances.quoteCurrency}.`
+            );
+        }
+
+        if (adjustedAmount < plannedAmount) {
+            console.warn('[market-making] ajustando quantidade por saldo disponivel:', {
+                exchange: configuredExchangeId,
+                symbol: config.symbol,
+                plannedAmount,
+                adjustedAmount,
+                freeBase: balances.freeBase,
+                freeQuote: balances.freeQuote,
+                baseCurrency: balances.baseCurrency,
+                quoteCurrency: balances.quoteCurrency
+            });
+        }
+
+        return {
+            amount: adjustedAmount,
+            balances
+        };
+    }
+
     async function executeLiveOrders(targetBid, targetAsk) {
-        const amount = getBaseAmountFromQuoteBudget(targetBid);
+        const plannedAmount = getBaseAmountFromQuoteBudget(targetBid);
         const buyPrice = Number(exchange.priceToPrecision(config.symbol, targetBid));
         const sellPrice = Number(exchange.priceToPrecision(config.symbol, targetAsk));
         const params = typeof exchange.createPostOnlyOrder === 'function' || exchange.has?.createPostOnlyOrder
             ? { postOnly: true }
             : {};
+        const { amount, balances } = await resolveLiveOrderAmount(targetBid, plannedAmount);
 
         let buyOrder = null;
         let sellOrder = null;
@@ -513,7 +534,10 @@ function createMarketMakingService(exchangeId) {
                 status: 'placed',
                 postOnly: Boolean(params.postOnly),
                 buyOrder,
-                sellOrder
+                sellOrder,
+                balances,
+                plannedAmount,
+                adjustedAmount: amount
             };
         } catch (error) {
             if (buyOrder && !sellOrder) {
@@ -525,7 +549,10 @@ function createMarketMakingService(exchangeId) {
                     buyOrder: canceledBuyOrder,
                     sellOrder: null,
                     lastCheckedAt: new Date().toISOString(),
-                    message: `Falha ao enviar a segunda ponta. A primeira ordem foi enviada e a tentativa de cancelamento foi executada. Motivo: ${error.message}`
+                    message: `Falha ao enviar a segunda ponta. A primeira ordem foi enviada e a tentativa de cancelamento foi executada. Motivo: ${error.message}`,
+                    balances,
+                    plannedAmount,
+                    adjustedAmount: amount
                 };
 
                 throw Object.assign(new Error(error.message), {
@@ -562,7 +589,16 @@ function createMarketMakingService(exchangeId) {
             const spreadPercent = midPrice > 0 ? ((askPrice - bidPrice) / midPrice) * 100 : 0;
             const targetBid = bidPrice * (1 - (config.quoteOffsetPercent / 100));
             const targetAsk = askPrice * (1 + (config.quoteOffsetPercent / 100));
-            const status = spreadPercent >= config.minSpreadPercent ? 'favorable' : 'tight';
+            const spreadAnomalyDetected = isHighLiquiditySpreadAnomaly(config.symbol, spreadPercent);
+            let status = spreadPercent >= config.minSpreadPercent ? 'favorable' : 'tight';
+            let summary = status === 'favorable'
+                ? 'Spread suficiente para publicar bid e ask.'
+                : 'Spread apertado; aguarde melhor abertura antes de cotar.';
+
+            if (spreadAnomalyDetected) {
+                status = 'tight_or_anomaly';
+                summary = 'Anomalia detectada: spread irreal para moeda de alta liquidez.';
+            }
             const timestamp = new Date().toISOString();
             const market = exchange.market(config.symbol);
             const quoteBudget = Number(exchange.costToPrecision(config.symbol, config.quoteBudget));
@@ -592,15 +628,15 @@ function createMarketMakingService(exchangeId) {
                 estimatedBaseAmount,
                 quoteOffsetPercent: config.quoteOffsetPercent,
                 minSpreadPercent: config.minSpreadPercent,
+                maxRealisticSpreadPercent: MAX_REALISTIC_SPREAD,
                 status: pendingExecution ? 'waiting-orders' : status,
-                summary: status === 'favorable'
-                    ? 'Spread suficiente para publicar bid e ask.'
-                    : 'Spread apertado; aguarde melhor abertura antes de cotar.'
+                summary: pendingExecution
+                    ? 'Ordens anteriores ainda estao abertas ou pendentes. Nenhuma nova ordem sera enviada ate a conclusao da execucao atual.'
+                    : summary
             };
 
             if (pendingExecution) {
                 result.execution = pendingExecution;
-                result.summary = 'Ordens anteriores ainda estao abertas ou pendentes. Nenhuma nova ordem sera enviada ate a conclusao da execucao atual.';
             }
 
             if (!pendingExecution && status === 'favorable' && config.mode === 'live') {

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arbitrage - Painel Multi-Exchange</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <div class="app-layout">
+        <aside class="sidebar">
+            <div class="sidebar-logo">
+                <span>◆</span> Arb<span>Trade</span>
+            </div>
+            <nav>
+                <a href="/arbitrage.html" class="nav-item active" data-section="arbitrage">
+                    <span class="nav-icon">📊</span>
+                    <span>Arbitrage</span>
+                </a>
+                <a href="/market-making.html" class="nav-item" data-section="market-making">
+                    <span class="nav-icon">📈</span>
+                    <span>Market Making</span>
+                </a>
+                <div class="nav-section">
+                    <div class="nav-section-title">Cadastro</div>
+                    <a href="/users.html" class="nav-item" target="_self">
+                        <span class="nav-icon">👤</span>
+                        <span>Usuários</span>
+                    </a>
+                    <a href="/exchanges.html" class="nav-item" target="_self">
+                        <span class="nav-icon">🏢</span>
+                        <span>Exchanges</span>
+                    </a>
+                </div>
+            </nav>
+        </aside>
+
+        <div class="main-content">
+            <main class="shell">
+                <section class="hero">
+                    <div class="hero-top">
+                        <div>
+                            <div class="eyebrow">Workspace</div>
+                            <h1>Arbitrage</h1>
+                        </div>
+                        <div class="hero-status-group">
+                            <div class="status-pill">
+                                <span class="status-dot"></span>
+                                <span id="mode-label">Carregando exchanges...</span>
+                            </div>
+                            <div class="status-pill" id="socket-status-pill" data-socket-state="connecting">
+                                <span class="status-dot" id="socket-status-dot"></span>
+                                <span id="socket-status-label">WebSocket conectando...</span>
+                            </div>
+                            <div class="status-pill status-pill-wide">
+                                <span class="status-caption">Última atualização</span>
+                                <span id="last-update-label">Aguardando dados...</span>
+                            </div>
+                        </div>
+                    </div>
+                    <p>Varreduras, rotas, histórico de scans e logs por corretora.</p>
+                    <div class="actions">
+                        <button class="primary" id="run-all">Executar todas</button>
+                        <button class="secondary" id="listen-all">Escutar todas</button>
+                        <button class="secondary" id="refresh-all">Atualizar arbitrage</button>
+                    </div>
+                    <span id="feedback" class="mono hero-feedback"></span>
+                </section>
+
+                <section class="workspace-section">
+                    <div class="section-heading">
+                        <div>
+                            <div class="eyebrow">Workspace</div>
+                            <h2>Arbitrage</h2>
+                        </div>
+                        <p>Painéis focados em scan, melhores rotas e logs persistidos.</p>
+                    </div>
+                    <section class="exchange-grid" id="exchange-grid"></section>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <script type="module" src="/app.js"></script>
+</body>
+</html>

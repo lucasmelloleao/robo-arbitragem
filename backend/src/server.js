@@ -5,11 +5,10 @@ const { WebSocketServer } = require('ws');
 
 const { createArbitrageService } = require('./arbitrage-service');
 const { createMarketMakingService } = require('./market-making-service');
-
-function sendJson(response, statusCode, payload) {
-    response.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8' });
-    response.end(JSON.stringify(payload));
-}
+const { connect: connectDatabase } = require('./database');
+const { sendJson, sendNoContent } = require('./http-utils');
+const { createApiRouter } = require('./routes');
+const { createWebSocketHandlers } = require('./ws/handlers');
 
 function getContentType(filePath) {
     const extension = path.extname(filePath).toLowerCase();
@@ -26,13 +25,13 @@ function getContentType(filePath) {
 }
 
 function parseExchangePath(pathname) {
-    const match = pathname.match(/^\/(binance|kraken|bybit|mexc|coinbase|gateio|okx)(?:\/|$)/i);
+    const match = pathname.match(/^\/(binance|kraken|bybit|mexc|coinbase|gateio|okx|woo|woox)(?:\/|$)/i);
 
     if (!match) {
         return { exchangeId: null, relativePath: pathname };
     }
 
-    const exchangeId = match[1].toLowerCase();
+    const exchangeId = match[1].toLowerCase() === 'woox' ? 'woo' : match[1].toLowerCase();
     const remainder = pathname.slice(match[0].length);
     const relativePath = remainder ? `/${remainder.replace(/^\/+/, '')}` : '/';
     return { exchangeId, relativePath };
@@ -41,30 +40,50 @@ function parseExchangePath(pathname) {
 function createAppServer() {
     const services = new Map();
     const marketMakingServices = new Map();
-    const publicDir = path.join(__dirname, '..', 'public');
+    const publicDirs = [
+        path.join(__dirname, '..', '..', 'frontend', 'public'),
+        path.join(__dirname, '..', '..', 'public')
+    ];
     const socketSubscriptions = new Map();
     const socketMarketMakingSubscriptions = new Map();
     const backgroundMarketMakingSubscriptions = new Map();
 
-    function getService(exchangeId) {
+    connectDatabase().catch((error) => {
+        console.error('[server] Falha ao conectar ao MongoDB na inicialização:', error.message);
+    });
+
+    async function getService(exchangeId) {
         const resolvedExchangeId = exchangeId || (process.env.ARBITRAGE_EXCHANGE || 'binance').trim().toLowerCase();
 
         if (!services.has(resolvedExchangeId)) {
-            services.set(resolvedExchangeId, createArbitrageService(resolvedExchangeId));
+            const servicePromise = createArbitrageService(resolvedExchangeId).catch((error) => {
+                services.delete(resolvedExchangeId);
+                throw error;
+            });
+            services.set(resolvedExchangeId, servicePromise);
         }
 
-        return services.get(resolvedExchangeId);
+        return await services.get(resolvedExchangeId);
     }
 
-    function getMarketMakingService(exchangeId) {
+    async function getMarketMakingService(exchangeId) {
         const resolvedExchangeId = exchangeId || (process.env.MARKET_MAKING_EXCHANGE || process.env.ARBITRAGE_EXCHANGE || 'binance').trim().toLowerCase();
 
         if (!marketMakingServices.has(resolvedExchangeId)) {
-            marketMakingServices.set(resolvedExchangeId, createMarketMakingService(resolvedExchangeId));
+            const servicePromise = createMarketMakingService(resolvedExchangeId).catch((error) => {
+                marketMakingServices.delete(resolvedExchangeId);
+                throw error;
+            });
+            marketMakingServices.set(resolvedExchangeId, servicePromise);
         }
 
-        return marketMakingServices.get(resolvedExchangeId);
+        return await marketMakingServices.get(resolvedExchangeId);
     }
+
+    const apiRouter = createApiRouter({
+        getMarketMakingService,
+        getService
+    });
 
     function sendSocketMessage(socket, payload) {
         if (socket.readyState === socket.OPEN) {
@@ -73,14 +92,14 @@ function createAppServer() {
     }
 
     async function pushExchangeUpdate(socket, exchangeId) {
-        const service = getService(exchangeId);
+        const service = await getService(exchangeId);
         await service.scan();
         const status = await service.getStatus();
         sendSocketMessage(socket, { type: 'exchange-update', exchangeId, payload: status });
     }
 
     async function pushMarketMakingUpdate(socket, exchangeId) {
-        const service = getMarketMakingService(exchangeId);
+        const service = await getMarketMakingService(exchangeId);
         const run = await service.run();
         const status = await service.getStatus();
 
@@ -105,7 +124,7 @@ function createAppServer() {
             };
         }
 
-        const service = getMarketMakingService(resolvedExchangeId);
+        const service = await getMarketMakingService(resolvedExchangeId);
         const config = service.getConfig();
         const subscription = {
             intervalMs: config.updateIntervalMs,
@@ -199,7 +218,7 @@ function createAppServer() {
             return { exchangeId, subscribed: true, intervalMs: subscriptions.get(exchangeId).intervalMs };
         }
 
-        const service = getService(exchangeId);
+        const service = await getService(exchangeId);
         const intervalMs = service.getConfig().scanIntervalMs;
         const subscription = {
             intervalMs,
@@ -232,7 +251,7 @@ function createAppServer() {
         }, intervalMs);
 
         subscriptions.set(exchangeId, subscription);
-        await runSubscriptionCycle();
+        runSubscriptionCycle().catch(() => {});
 
         return { exchangeId, subscribed: true, intervalMs };
     }
@@ -257,7 +276,7 @@ function createAppServer() {
             };
         }
 
-        const service = getMarketMakingService(resolvedExchangeId);
+        const service = await getMarketMakingService(resolvedExchangeId);
         const config = service.getConfig();
         const subscription = {
             intervalMs: config.updateIntervalMs,
@@ -310,7 +329,7 @@ function createAppServer() {
         }, subscription.intervalMs);
 
         subscriptions.set(resolvedExchangeId, subscription);
-        await runSubscriptionCycle();
+        runSubscriptionCycle().catch(() => {});
 
         return {
             exchangeId: resolvedExchangeId,
@@ -356,80 +375,45 @@ function createAppServer() {
         return { exchangeId: resolvedExchangeId, subscribed: false };
     }
 
-    async function handleSocketRequest(message) {
-        const { action, exchangeId } = message || {};
-
-        if (action === 'market-making-status') {
-            return await getMarketMakingService(exchangeId).getStatus();
-        }
-
-        if (action === 'market-making-run') {
-            const service = getMarketMakingService(exchangeId);
-            const run = await service.run();
-            const status = await service.getStatus();
-            return { run, status };
-        }
-
-        if (action === 'market-making-cancel') {
-            const service = getMarketMakingService(exchangeId);
-            const cancellation = await service.cancelActiveExecution();
-            const status = await service.getStatus();
-            return { cancellation, status };
-        }
-
-        if (action === 'market-making-subscribe') {
-            return { exchangeId, action };
-        }
-
-        if (action === 'market-making-unsubscribe') {
-            return { exchangeId, action };
-        }
-
-        const service = getService(exchangeId);
-
-        if (action === 'status') {
-            return await service.getStatus();
-        }
-
-        if (action === 'logs') {
-            return { logs: await service.readLogs(30) };
-        }
-
-        if (action === 'scan') {
-            const scan = await service.scan();
-            return { scan, logs: await service.readLogs(10) };
-        }
-
-        if (action === 'subscribe') {
-            return { exchangeId, action };
-        }
-
-        if (action === 'unsubscribe') {
-            return { exchangeId, action };
-        }
-
-        throw new Error('Ação WebSocket não suportada.');
-    }
-
     async function serveStaticFile(response, pathname) {
         const safePath = pathname === '/' ? '/index.html' : pathname;
         const normalizedPath = path.normalize(safePath).replace(/^([.][.][\\/])+/, '');
-        const filePath = path.join(publicDir, normalizedPath);
 
-        if (!filePath.startsWith(publicDir)) {
-            sendJson(response, 403, { error: 'Acesso negado.' });
-            return;
+        for (const publicDir of publicDirs) {
+            const filePath = path.join(publicDir, normalizedPath);
+
+            if (!filePath.startsWith(publicDir)) {
+                continue;
+            }
+
+            try {
+                const file = await fs.readFile(filePath);
+                response.writeHead(200, { 'Content-Type': getContentType(filePath) });
+                response.end(file);
+                return;
+            } catch (error) {
+                if (error.code !== 'ENOENT') {
+                    throw error;
+                }
+            }
         }
 
-        const file = await fs.readFile(filePath);
-        response.writeHead(200, { 'Content-Type': getContentType(filePath) });
-        response.end(file);
+        throw Object.assign(new Error('Arquivo não encontrado.'), { code: 'ENOENT' });
     }
 
     const server = http.createServer(async (request, response) => {
         try {
-            const url = new URL(request.url, `http://${request.headers.host}`);
-            const { relativePath } = parseExchangePath(url.pathname);
+            const requestUrl = new URL(request.url, `http://${request.headers.host}`);
+            const { relativePath } = parseExchangePath(requestUrl.pathname);
+
+            if (request.method === 'OPTIONS') {
+                sendNoContent(response);
+                return;
+            }
+
+            if (await apiRouter.handle(request, response, requestUrl)) {
+                return;
+            }
 
             if (request.method === 'GET') {
                 await serveStaticFile(response, relativePath);
@@ -449,9 +433,21 @@ function createAppServer() {
     });
 
     const webSocketServer = new WebSocketServer({ server, path: '/ws' });
+    const webSocketHandlers = createWebSocketHandlers({
+        getMarketMakingService,
+        getService,
+        subscribeSocketToExchange,
+        subscribeSocketToMarketMaking,
+        unsubscribeSocketFromExchange,
+        unsubscribeSocketFromMarketMaking
+    });
 
     webSocketServer.on('connection', (socket) => {
         console.log('[ws] cliente conectado em /ws');
+
+        connectDatabase().catch((error) => {
+            console.error('[ws] falha ao conectar ao MongoDB:', error.message);
+        });
 
         socket.on('message', async (rawMessage) => {
             let request;
@@ -466,19 +462,7 @@ function createAppServer() {
             console.log('[ws] mensagem recebida do cliente:', request);
 
             try {
-                let payload;
-
-                if (request.action === 'subscribe') {
-                    payload = await subscribeSocketToExchange(socket, request.exchangeId);
-                } else if (request.action === 'unsubscribe') {
-                    payload = unsubscribeSocketFromExchange(socket, request.exchangeId);
-                } else if (request.action === 'market-making-subscribe') {
-                    payload = await subscribeSocketToMarketMaking(socket, request.exchangeId);
-                } else if (request.action === 'market-making-unsubscribe') {
-                    payload = unsubscribeSocketFromMarketMaking(socket, request.exchangeId);
-                } else {
-                    payload = await handleSocketRequest(request);
-                }
+                const payload = await webSocketHandlers.handle(request, socket);
 
                 const response = { requestId: request.requestId, ok: true, payload };
                 console.log('[ws] resposta enviada ao cliente:', {

@@ -1,15 +1,18 @@
 {
   "dependencies": {
     "ccxt": "^4.5.62",
-    "dotenv": "^17.4.2"
+    "dotenv": "^17.4.2",
+    "mongoose": "^9.7.3"
   },
   "name": "lucas",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "backend/index.js",
   "scripts": {
-    "dev": "node --watch index.js",
-    "start": "node index.js",
+    "dev": "node --watch backend/index.js",
+    "dev:backend": "node --watch backend/index.js",
+    "start": "node backend/index.js",
+    "start:backend": "node backend/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

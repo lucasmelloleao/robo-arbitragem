@@ -1,6 +1,15 @@
 const ccxt = require('ccxt');
 const fs = require('fs/promises');
 const path = require('path');
+const { getExchangeCredentialsByAcronym } = require('./database');
+const {
+    getCredentialRequirementLabel,
+    getExchangeCredentialConfig,
+    normalizeExchangeId: normalizeSupportedExchangeId
+} = require('./exchange-credentials');
+
+const MAX_REALISTIC_SPREAD = 2.0;
+const HIGH_LIQUIDITY_ASSETS = ['SOL', 'BTC'];
 
 function parseAssetList(envValue, fallback) {
     if (!envValue) {
@@ -20,99 +29,52 @@ function parseNumber(envValue, fallback) {
     return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function isHighLiquiditySpreadAnomaly(symbol, spreadPercent) {
+    if (!Number.isFinite(spreadPercent) || spreadPercent <= MAX_REALISTIC_SPREAD) {
+        return false;
+    }
+
+    const normalizedSymbol = String(symbol || '').toUpperCase();
+    return HIGH_LIQUIDITY_ASSETS.some((asset) => normalizedSymbol.includes(asset));
+}
+
 function normalizeExchangeId(exchangeId) {
-    return (exchangeId || process.env.ARBITRAGE_EXCHANGE || 'binance').trim().toLowerCase();
+    return normalizeSupportedExchangeId(exchangeId || process.env.ARBITRAGE_EXCHANGE || 'binance');
 }
 
-function getFirstDefinedEnv(names) {
-    for (const name of names) {
-        const value = process.env[name];
-
-        if (value) {
-            return value;
-        }
-    }
-
-    return undefined;
-}
-
-function getExchangeCredentialDefinition(exchangeId) {
-    const normalizedExchangeId = normalizeExchangeId(exchangeId);
-
-    const definitions = {
-        kraken: {
-            apiKey: ['KRAKEN_API_KEY'],
-            secret: ['KRAKEN_SECRET_KEY']
-        },
-        binance: {
-            apiKey: ['BINANCE_API_KEY'],
-            secret: ['BINANCE_SECRET_KEY']
-        },
-        bybit: {
-            apiKey: ['BYBIT_API_KEY'],
-            secret: ['BYBIT_SECRET_KEY']
-        },
-        mexc: {
-            apiKey: ['MEXC_API_KEY'],
-            secret: ['MEXC_SECRET_KEY']
-        },
-        coinbase: {
-            apiKey: ['COINBASE_API_KEY'],
-            secret: ['COINBASE_SECRET_KEY']
-        },
-        gateio: {
-            apiKey: ['GATE_API_KEY', 'GATEIO_API_KEY'],
-            secret: ['GATE_SECRET_KEY', 'GATEIO_SECRET_KEY']
-        },
-        okx: {
-            apiKey: ['OKX_API_KEY'],
-            secret: ['OKX_SECRET_KEY', 'OKX_SECRET'],
-            password: ['OKX_PASSPHRASE', 'OKX_PASSWORD']
-        }
-    };
-
-    const definition = definitions[normalizedExchangeId];
-
-    if (!definition) {
-        throw new Error(`Exchange inválida: ${normalizedExchangeId}. Use "binance", "kraken", "bybit", "mexc", "coinbase", "gateio" ou "okx".`);
-    }
-
-    return definition;
-}
-
-function getMissingCredentialGroups(exchangeId) {
-    const definition = getExchangeCredentialDefinition(exchangeId);
+async function getMissingCredentialGroups(exchangeId) {
+    const definition = getExchangeCredentialConfig(exchangeId).credentials;
+    const credentials = await resolveExchangeCredentials(exchangeId);
     const missingGroups = [];
 
-    for (const names of Object.values(definition)) {
-        if (!getFirstDefinedEnv(names)) {
-            missingGroups.push(names.join(' ou '));
+    for (const field of Object.keys(definition)) {
+        if (!credentials[field]) {
+            missingGroups.push(getCredentialRequirementLabel(exchangeId, field));
         }
     }
 
     return missingGroups;
 }
 
-function resolveExchangeCredentials(exchangeId) {
-    const definition = getExchangeCredentialDefinition(exchangeId);
+async function resolveExchangeCredentials(exchangeId) {
+    const normalizedExchangeId = normalizeExchangeId(exchangeId);
+    const exchangeConfig = getExchangeCredentialConfig(normalizedExchangeId);
+    const exchangeRecord = await getExchangeCredentialsByAcronym(exchangeConfig.acronym);
 
-    const credentials = {};
+    const credentials = {
+        apiKey: exchangeRecord?.apiKey,
+        secret: exchangeRecord?.secretKey
+    };
 
-    for (const [field, names] of Object.entries(definition)) {
-        const resolvedValue = getFirstDefinedEnv(names);
-
-        if (!resolvedValue) {
-            continue;
-        }
-
-        credentials[field] = resolvedValue;
+    if (exchangeConfig.credentials.password) {
+        credentials.password = exchangeRecord?.password;
     }
 
     return credentials;
 }
 
-function assertLiveTradingCredentials(exchangeId) {
-    const missingGroups = getMissingCredentialGroups(exchangeId);
+async function assertLiveTradingCredentials(exchangeId) {
+    const missingGroups = await getMissingCredentialGroups(exchangeId);
 
     if (missingGroups.length > 0) {
         throw new Error(`Credenciais ausentes para ${normalizeExchangeId(exchangeId)} em modo live: ${missingGroups.join(', ')}.`);
@@ -128,10 +90,10 @@ function shouldUsePrivateApi(exchangeId) {
     return getExchangeSetting(exchangeId, 'ARBITRAGE_ENABLE_LIVE_TRADING') === 'true';
 }
 
-function createExchange(exchangeId) {
+async function createExchange(exchangeId) {
     const normalizedExchangeId = normalizeExchangeId(exchangeId);
     const credentials = shouldUsePrivateApi(normalizedExchangeId)
-        ? resolveExchangeCredentials(normalizedExchangeId)
+        ? await resolveExchangeCredentials(normalizedExchangeId)
         : {};
     const timeoutSettings = getExchangeTimeoutSettings(normalizedExchangeId);
 
@@ -220,7 +182,19 @@ function createExchange(exchangeId) {
         });
     }
 
-    throw new Error(`Exchange inválida: ${normalizedExchangeId}. Use "binance", "kraken", "bybit", "mexc", "coinbase", "gateio" ou "okx".`);
+    if (normalizedExchangeId === 'woo') {
+        return new ccxt.woo({
+            apiKey: credentials.apiKey,
+            secret: credentials.secret,
+            enableRateLimit: true,
+            ...timeoutSettings,
+            options: {
+                defaultType: 'spot'
+            }
+        });
+    }
+
+    throw new Error(`Exchange inválida: ${normalizedExchangeId}. Use "binance", "kraken", "bybit", "mexc", "coinbase", "gateio", "okx" ou "woo".`);
 }
 
 function getExchangeSetting(exchangeId, key) {
@@ -228,10 +202,10 @@ function getExchangeSetting(exchangeId, key) {
     return process.env[`${exchangePrefix}_${key}`] ?? process.env[key];
 }
 
-function createArbitrageService(exchangeId) {
-    const rootDir = path.join(__dirname, '..');
+async function createArbitrageService(exchangeId) {
+    const rootDir = path.join(__dirname, '..', '..');
     const configuredExchangeId = normalizeExchangeId(exchangeId);
-    const exchange = createExchange(exchangeId);
+    const exchange = await createExchange(exchangeId);
 
     const BASE_DEFAULTS = {
         startAssets: ['USDT' ],
@@ -354,6 +328,21 @@ function createArbitrageService(exchangeId) {
             minProfitPercent: 0.1,
             maxSlippagePercent: 0.15,
             opportunityLogFile: path.join(rootDir, 'logs', 'arbitrage-opportunities-okx.jsonl')
+        },
+        woo: {
+            startAssets: ['USDT', 'USDC'],
+            bridgeAssets: ['BTC', 'ETH', 'SOL'],
+            targetAssets: ['ETH', 'SOL', 'XRP'],
+            investmentAmount: 100,
+            tradingFee: 0.001,
+            scanIntervalMs: 3000,
+            maxTrianglesPerCycle: 8,
+            orderBookDepth: 10,
+            maxSpreadPercent: 0.2,
+            minVolumeBuffer: 1.05,
+            minProfitPercent: 0.1,
+            maxSlippagePercent: 0.15,
+            opportunityLogFile: path.join(rootDir, 'logs', 'arbitrage-opportunities-woo.jsonl')
         }
     };
 
@@ -397,7 +386,7 @@ function createArbitrageService(exchangeId) {
     };
 
     if (config.enableLiveTrading) {
-        assertLiveTradingCredentials(configuredExchangeId);
+        await assertLiveTradingCredentials(configuredExchangeId);
     }
 
     let monitoredTriangles = [];
@@ -735,6 +724,24 @@ function createArbitrageService(exchangeId) {
                     'Filtro de spread',
                     `${triangle.pair1}: ${spread1 === null ? '--' : spread1.toFixed(4)}%, ${triangle.pair2}: ${spread2 === null ? '--' : spread2.toFixed(4)}%, ${triangle.pair3}: ${spread3 === null ? '--' : spread3.toFixed(4)}% | limite ${config.maxSpreadPercent.toFixed(4)}%`
                 );
+
+                const anomalyPairs = [
+                    [triangle.pair1, spread1],
+                    [triangle.pair2, spread2],
+                    [triangle.pair3, spread3]
+                ].filter(([pair, spread]) => isHighLiquiditySpreadAnomaly(pair, spread));
+
+                if (anomalyPairs.length > 0) {
+                    skippedBySpread += 1;
+                    finalizeEvaluation(evaluation, 'skipped', 'Anomalia detectada: spread irreal para moeda de alta liquidez.');
+                    addEvaluationStep(
+                        evaluation,
+                        'Resultado do spread',
+                        `Anomalia detectada em ${anomalyPairs.map(([pair, spread]) => `${pair} ${spread.toFixed(4)}%`).join(', ')}.`,
+                        'error'
+                    );
+                    continue;
+                }
 
                 if (
                     spread1 === null || spread2 === null || spread3 === null ||

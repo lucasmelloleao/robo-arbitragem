@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ArbTrade - Painel Multi-Exchange</title>
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+        .app-layout {
+            display: grid;
+            grid-template-columns: 260px 1fr;
+            min-height: 100vh;
+        }
+
+        .sidebar {
+            position: fixed;
+            inset: 0 auto 0 0;
+            width: 260px;
+            background: linear-gradient(180deg, #0b1420 0%, #101c2a 100%);
+            border-right: 1px solid rgba(130, 170, 210, 0.18);
+            padding: 1.5rem 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            overflow-y: auto;
+            z-index: 100;
+        }
+
+        .sidebar-logo {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #f3f7fb;
+            margin-bottom: 1.5rem;
+            padding: 0 0.5rem;
+        }
+
+        .sidebar-logo span {
+            color: #7df9c1;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.875rem 1rem;
+            border-radius: 12px;
+            color: #94a7bb;
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.9375rem;
+            transition: all 180ms ease;
+            cursor: pointer;
+            border: none;
+            background: transparent;
+            width: 100%;
+            text-align: left;
+        }
+
+        .nav-item:hover {
+            background: rgba(255, 255, 255, 0.06);
+            color: #f3f7fb;
+        }
+
+        .nav-item.active {
+            background: rgba(125, 249, 193, 0.12);
+            color: #7df9c1;
+        }
+
+        .nav-icon {
+            font-size: 1.25rem;
+            width: 1.5rem;
+            text-align: center;
+        }
+
+        .nav-section {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid rgba(130, 170, 210, 0.12);
+        }
+
+        .nav-section-title {
+            font-size: 0.6875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: #6b7280;
+            padding: 0 0.75rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .main-content {
+            grid-column: 2;
+            padding: 2rem;
+            margin-left: 260px;
+        }
+
+        .view-section {
+            display: none;
+        }
+
+        .view-section.active {
+            display: block;
+        }
+
+        .home-link-card {
+            text-align: left;
+            cursor: pointer;
+            background: none;
+            border: none;
+            color: inherit;
+        }
+
+        .iframe-shell {
+            width: 100%;
+            height: calc(100vh - 4rem);
+            border: none;
+            border-radius: 24px;
+            background: rgba(14, 22, 32, 0.85);
+            box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+        }
+
+        @media (max-width: 768px) {
+            .app-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                position: relative;
+                width: 100%;
+                inset: auto;
+                flex-direction: row;
+                flex-wrap: wrap;
+                padding: 1rem;
+            }
+
+            .main-content {
+                grid-column: 1;
+                padding: 1rem;
+                margin-left: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-layout">
+        <aside class="sidebar">
+            <div class="sidebar-logo">
+                <span>◆</span> Arb<span>Trade</span>
+            </div>
+            <nav>
+                <button class="nav-item active" data-view="home">
+                    <span class="nav-icon">🏠</span>
+                    <span>Home</span>
+                </button>
+                <button class="nav-item" data-view="arbitrage">
+                    <span class="nav-icon">📊</span>
+                    <span>Arbitrage</span>
+                </button>
+                <button class="nav-item" data-view="market-making">
+                    <span class="nav-icon">📈</span>
+                    <span>Market Making</span>
+                </button>
+                <div class="nav-section">
+                    <div class="nav-section-title">Cadastro</div>
+                    <button class="nav-item" data-view="users">
+                        <span class="nav-icon">👤</span>
+                        <span>Usuários</span>
+                    </button>
+                    <button class="nav-item" data-view="exchanges">
+                        <span class="nav-icon">🏢</span>
+                        <span>Exchanges</span>
+                    </button>
+                </div>
+            </nav>
+        </aside>
+
+        <div class="main-content">
+            <div id="view-home" class="view-section active">
+                <main class="shell">
+                    <section class="hero">
+                        <div class="hero-top">
+                            <div>
+                                <div class="eyebrow">Dashboard</div>
+                                <h1>Bem-vindo ao ArbTrade</h1>
+                            </div>
+                        </div>
+                        <p>Selecione um workspace para começar.</p>
+                    </section>
+
+                    <section class="workspace-section">
+                        <div class="hero-workspaces">
+                            <button class="workspace-callout home-link-card" data-view="arbitrage">
+                                <div>
+                                    <p class="workspace-kicker">Workspace</p>
+                                    <h2>📊 Arbitrage</h2>
+                                </div>
+                                <p>Varreduras, rotas, histórico de scans e logs por corretora.</p>
+                                <div class="actions">
+                                    <span class="primary" style="padding: 14px 22px; border-radius: 999px; display: inline-block;">Acessar Arbitrage</span>
+                                </div>
+                            </button>
+                            <button class="workspace-callout workspace-callout-mm home-link-card" data-view="market-making">
+                                <div>
+                                    <p class="workspace-kicker">Workspace</p>
+                                    <h2>📈 Market Making</h2>
+                                </div>
+                                <p>Gadgets, execução ativa, oportunidades favoráveis e histórico da estratégia.</p>
+                                <div class="actions">
+                                    <span class="secondary" style="padding: 14px 22px; border-radius: 999px; display: inline-block;">Acessar Market Making</span>
+                                </div>
+                            </button>
+                        </div>
+                    </section>
+                </main>
+            </div>
+
+            <div id="view-arbitrage" class="view-section">
+                <main class="shell">
+                    <section class="hero">
+                        <div class="hero-top">
+                            <div>
+                                <div class="eyebrow">Workspace</div>
+                                <h1>Arbitrage</h1>
+                            </div>
+                            <div class="hero-status-group">
+                                <div class="status-pill">
+                                    <span class="status-dot"></span>
+                                    <span id="mode-label">Carregando exchanges...</span>
+                                </div>
+                                <div class="status-pill" id="socket-status-pill" data-socket-state="connecting">
+                                    <span class="status-dot" id="socket-status-dot"></span>
+                                    <span id="socket-status-label">WebSocket conectando...</span>
+                                </div>
+                                <div class="status-pill status-pill-wide">
+                                    <span class="status-caption">Última atualização</span>
+                                    <span id="last-update-label">Aguardando dados...</span>
+                                </div>
+                            </div>
+                        </div>
+                        <p>Varreduras, rotas, histórico de scans e logs por corretora.</p>
+                        <div class="actions">
+                            <button class="primary" id="run-all">Executar todas</button>
+                            <button class="secondary" id="listen-all">Escutar todas</button>
+                            <button class="secondary" id="refresh-all">Atualizar arbitrage</button>
+                        </div>
+                        <span id="feedback" class="mono hero-feedback"></span>
+                    </section>
+
+                    <section class="workspace-section">
+                        <div class="section-heading">
+                            <div>
+                                <div class="eyebrow">Workspace</div>
+                                <h2>Arbitrage</h2>
+                            </div>
+                            <p>Painéis focados em scan, melhores rotas e logs persistidos.</p>
+                        </div>
+                        <section class="exchange-grid" id="exchange-grid"></section>
+                    </section>
+                </main>
+            </div>
+
+            <div id="view-market-making" class="view-section">
+                <main class="shell">
+                    <section class="hero">
+                        <div class="hero-top">
+                            <div>
+                                <div class="eyebrow">Workspace</div>
+                                <h1>Market Making</h1>
+                            </div>
+                        </div>
+                        <p>Gadgets, execução ativa, oportunidades favoráveis e histórico da estratégia.</p>
+                        <div class="actions">
+                            <button class="secondary" id="run-market-making">Executar Market Making</button>
+                            <button class="secondary" id="listen-market-making-all">Escutar MM todas</button>
+                        </div>
+                    </section>
+
+                    <section class="workspace-section">
+                        <div class="section-heading">
+                            <div>
+                                <div class="eyebrow">Workspace</div>
+                                <h2>Market Making</h2>
+                            </div>
+                            <p>Selecione a corretora nos gadgets abaixo e acompanhe o detalhamento completo.</p>
+                        </div>
+
+                        <section class="exchange-grid market-making-grid" id="market-making-grid"></section>
+
+                        <section class="panel" id="market-making-panel">
+                            <div class="exchange-panel-top">
+                                <div>
+                                    <h2 id="market-making-panel-title">Market Making</h2>
+                                    <div class="exchange-feedback mono" id="market-making-summary">Nenhuma execução de market making ainda.</div>
+                                </div>
+                                <div class="actions actions-compact">
+                                    <button class="secondary" id="listen-market-making">Escutar Market Making</button>
+                                    <button class="secondary" id="cancel-market-making-orders">Cancelar ordens MM</button>
+                                </div>
+                            </div>
+                            <div class="exchange-status-meta">
+                                <article class="status-card">
+                                    <span class="status-card-label">Exchange / Par</span>
+                                    <span class="status-card-value" id="market-making-target">Aguardando execução...</span>
+                                </article>
+                                <article class="status-card">
+                                    <span class="status-card-label">Última execução</span>
+                                    <span class="status-card-value" id="market-making-last-run">Aguardando execução...</span>
+                                </article>
+                                <article class="status-card">
+                                    <span class="status-card-label">Modo</span>
+                                    <span class="status-card-value" id="market-making-mode">Aguardando configuração...</span>
+                                </article>
+                                <article class="status-card">
+                                    <span class="status-card-label">Loop</span>
+                                    <span class="status-card-value" id="market-making-loop">Aguardando configuração...</span>
+                                </article>
+                            </div>
+                            <div class="metrics" id="market-making-metrics">
+                                <div class="empty">Sem dados de market making ainda.</div>
+                            </div>
+                            <details class="panel exchange-section accordion-item section-accordion">
+                                <summary class="accordion-summary section-accordion-summary">
+                                    <span>
+                                        <span class="accordion-title">Execução Ativa</span>
+                                        <span class="accordion-subtitle">Ordens pendentes, status e última checagem.</span>
+                                    </span>
+                                </summary>
+                                <div class="accordion-body">
+                                    <div class="cards" id="market-making-active-execution">
+                                        <div class="empty">Nenhuma ordem pendente de market making.</div>
+                                    </div>
+                                </div>
+                            </details>
+                            <details class="panel exchange-section accordion-item section-accordion">
+                                <summary class="accordion-summary section-accordion-summary">
+                                    <span>
+                                        <span class="accordion-title">Oportunidades Favoráveis</span>
+                                        <span class="accordion-subtitle">Registros persistidos de spreads que atenderam a estratégia.</span>
+                                    </span>
+                                </summary>
+                                <div class="accordion-body">
+                                    <div class="cards" id="market-making-favorable-opportunities">
+                                        <div class="empty">Nenhuma oportunidade favorável registrada ainda.</div>
+                                    </div>
+                                </div>
+                            </details>
+                            <details class="panel exchange-section accordion-item section-accordion">
+                                <summary class="accordion-summary section-accordion-summary">
+                                    <span>
+                                        <span class="accordion-title">Histórico de Market Making</span>
+                                        <span class="accordion-subtitle">Execuções recentes da estratégia com status, spread e preços sugeridos.</span>
+                                    </span>
+                                </summary>
+                                <div class="accordion-body">
+                                    <div class="cards" id="market-making-history">
+                                        <div class="empty">Nenhuma execução de market making ainda.</div>
+                                    </div>
+                                </div>
+                            </details>
+                        </section>
+                    </section>
+                </main>
+            </div>
+
+            <div id="view-users" class="view-section">
+                <iframe src="/users.html" class="iframe-shell"></iframe>
+            </div>
+
+            <div id="view-exchanges" class="view-section">
+                <iframe src="/exchanges.html" class="iframe-shell"></iframe>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="/app.js"></script>
+    <script>
+        const navItems = document.querySelectorAll('.nav-item[data-view]');
+        const viewSections = document.querySelectorAll('.view-section');
+        const homeButtons = document.querySelectorAll('.home-link-card[data-view]');
+        let dashboardInitialized = false;
+
+        function loadDashboardForView(viewName) {
+            const marketMakingPanel = document.getElementById('market-making-panel');
+
+            if (viewName === 'arbitrage') {
+                if (marketMakingPanel) {
+                    marketMakingPanel.style.display = 'none';
+                }
+
+                const app = window.app;
+                const visibleExchanges = ['binance', 'kraken', 'bybit', 'mexc', 'coinbase', 'gateio', 'okx', 'woo'];
+
+                if (app && app.loadDashboard) {
+                    visibleExchanges.forEach((exchangeId) => {
+                        app.loadDashboard(exchangeId).catch(() => {});
+                    });
+                }
+
+                return;
+            }
+
+            if (viewName === 'market-making' && marketMakingPanel) {
+                marketMakingPanel.style.display = 'block';
+            }
+        }
+
+        function showView(viewName) {
+            viewSections.forEach((section) => section.classList.remove('active'));
+            navItems.forEach((nav) => nav.classList.remove('active'));
+
+            const targetView = document.getElementById(`view-${viewName}`);
+            const targetNav = document.querySelector(`.nav-item[data-view="${viewName}"]`);
+
+            if (targetView) {
+                targetView.classList.add('active');
+            }
+
+            if (targetNav) {
+                targetNav.classList.add('active');
+            }
+
+            if (viewName === 'arbitrage' || viewName === 'market-making') {
+                window.setTimeout(() => {
+                    const app = window.app;
+
+                    if (!dashboardInitialized && app && app.initDashboard) {
+                        dashboardInitialized = Boolean(app.initDashboard());
+                    }
+
+                    if (app && app.initPanels) {
+                        app.initPanels();
+                    }
+
+                    loadDashboardForView(viewName);
+                }, 100);
+            }
+        }
+
+        navItems.forEach((item) => {
+            item.addEventListener('click', () => {
+                const viewName = item.dataset.view;
+                showView(viewName);
+            });
+        });
+
+        homeButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+                const viewName = button.dataset.view;
+
+                if (viewName) {
+                    showView(viewName);
+                }
+            });
+        });
+    </script>
+</body>
+</html>

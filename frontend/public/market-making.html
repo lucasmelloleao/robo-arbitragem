@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Market Making - Painel Multi-Exchange</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <div class="app-layout">
+        <aside class="sidebar">
+            <div class="sidebar-logo">
+                <span>◆</span> Arb<span>Trade</span>
+            </div>
+            <nav>
+                <a href="/arbitrage.html" class="nav-item" data-section="arbitrage">
+                    <span class="nav-icon">📊</span>
+                    <span>Arbitrage</span>
+                </a>
+                <a href="/market-making.html" class="nav-item active" data-section="market-making">
+                    <span class="nav-icon">📈</span>
+                    <span>Market Making</span>
+                </a>
+                <div class="nav-section">
+                    <div class="nav-section-title">Cadastro</div>
+                    <a href="/users.html" class="nav-item" target="_self">
+                        <span class="nav-icon">👤</span>
+                        <span>Usuários</span>
+                    </a>
+                    <a href="/exchanges.html" class="nav-item" target="_self">
+                        <span class="nav-icon">🏢</span>
+                        <span>Exchanges</span>
+                    </a>
+                </div>
+            </nav>
+        </aside>
+
+        <div class="main-content">
+            <main class="shell">
+                <section class="hero">
+                    <div class="hero-top">
+                        <div>
+                            <div class="eyebrow">Workspace</div>
+                            <h1>Market Making</h1>
+                        </div>
+                        <div class="hero-status-group">
+                            <div class="status-pill">
+                                <span class="status-dot"></span>
+                                <span id="mode-label">Carregando exchanges...</span>
+                            </div>
+                            <div class="status-pill" id="socket-status-pill" data-socket-state="connecting">
+                                <span class="status-dot" id="socket-status-dot"></span>
+                                <span id="socket-status-label">WebSocket conectando...</span>
+                            </div>
+                            <div class="status-pill status-pill-wide">
+                                <span class="status-caption">Última atualização</span>
+                                <span id="last-update-label">Aguardando dados...</span>
+                            </div>
+                        </div>
+                    </div>
+                    <p>Gadgets, execução ativa, oportunidades favoráveis e histórico da estratégia.</p>
+                    <div class="actions">
+                        <button class="secondary" id="run-market-making">Executar Market Making</button>
+                        <button class="secondary" id="listen-market-making-all">Escutar MM todas</button>
+                    </div>
+                    <span id="feedback" class="mono hero-feedback"></span>
+                </section>
+
+                <section class="workspace-section">
+                    <div class="section-heading">
+                        <div>
+                            <div class="eyebrow">Workspace</div>
+                            <h2>Market Making</h2>
+                        </div>
+                        <p>Selecione a corretora nos gadgets abaixo e acompanhe o detalhamento completo.</p>
+                    </div>
+
+                    <section class="exchange-grid market-making-grid" id="market-making-grid"></section>
+
+                    <section class="panel" id="market-making-panel">
+                        <div class="exchange-panel-top">
+                            <div>
+                                <h2 id="market-making-panel-title">Market Making</h2>
+                                <div class="exchange-feedback mono" id="market-making-summary">Nenhuma execução de market making ainda.</div>
+                            </div>
+                            <div class="actions actions-compact">
+                                <button class="secondary" id="listen-market-making">Escutar Market Making</button>
+                                <button class="secondary" id="cancel-market-making-orders">Cancelar ordens MM</button>
+                            </div>
+                        </div>
+                        <div class="exchange-status-meta">
+                            <article class="status-card">
+                                <span class="status-card-label">Exchange / Par</span>
+                                <span class="status-card-value" id="market-making-target">Aguardando execução...</span>
+                            </article>
+                            <article class="status-card">
+                                <span class="status-card-label">Última execução</span>
+                                <span class="status-card-value" id="market-making-last-run">Aguardando execução...</span>
+                            </article>
+                            <article class="status-card">
+                                <span class="status-card-label">Modo</span>
+                                <span class="status-card-value" id="market-making-mode">Aguardando configuração...</span>
+                            </article>
+                            <article class="status-card">
+                                <span class="status-card-label">Loop</span>
+                                <span class="status-card-value" id="market-making-loop">Aguardando configuração...</span>
+                            </article>
+                        </div>
+                        <div class="metrics" id="market-making-metrics">
+                            <div class="empty">Sem dados de market making ainda.</div>
+                        </div>
+                        <details class="panel exchange-section accordion-item section-accordion">
+                            <summary class="accordion-summary section-accordion-summary">
+                                <span>
+                                    <span class="accordion-title">Execução Ativa</span>
+                                    <span class="accordion-subtitle">Ordens pendentes, status e última checagem.</span>
+                                </span>
+                            </summary>
+                            <div class="accordion-body">
+                                <div class="cards" id="market-making-active-execution">
+                                    <div class="empty">Nenhuma ordem pendente de market making.</div>
+                                </div>
+                            </div>
+                        </details>
+                        <details class="panel exchange-section accordion-item section-accordion">
+                            <summary class="accordion-summary section-accordion-summary">
+                                <span>
+                                    <span class="accordion-title">Oportunidades Favoráveis</span>
+                                    <span class="accordion-subtitle">Registros persistidos de spreads que atenderam a estratégia.</span>
+                                </span>
+                            </summary>
+                            <div class="accordion-body">
+                                <div class="cards" id="market-making-favorable-opportunities">
+                                    <div class="empty">Nenhuma oportunidade favorável registrada ainda.</div>
+                                </div>
+                            </div>
+                        </details>
+                        <details class="panel exchange-section accordion-item section-accordion">
+                            <summary class="accordion-summary section-accordion-summary">
+                                <span>
+                                    <span class="accordion-title">Histórico de Market Making</span>
+                                    <span class="accordion-subtitle">Execuções recentes da estratégia com status, spread e preços sugeridos.</span>
+                                </span>
+                            </summary>
+                            <div class="accordion-body">
+                                <div class="cards" id="market-making-history">
+                                    <div class="empty">Nenhuma execução de market making ainda.</div>
+                                </div>
+                            </div>
+                        </details>
+                    </section>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <script type="module" src="/app.js"></script>
+</body>
+</html>

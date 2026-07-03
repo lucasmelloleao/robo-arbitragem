@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerenciamento de Usuários</title>
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+        .user-management-section {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 1rem;
+        }
+        .user-form-container {
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 16px;
+            padding: 1.75rem;
+            margin-top: 1.75rem;
+        }
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+        }
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        .form-group label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #374151;
+            margin-bottom: 0.5rem;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 0.625rem 0.875rem;
+            border: 1px solid #d1d5db;
+            border-radius: 10px;
+            font-size: 0.875rem;
+            transition: border-color 0.2s, box-shadow 0.2s;
+            background: #ffffff;
+        }
+        .form-group input:focus {
+            outline: none;
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+        }
+        .toggle-field {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            cursor: pointer;
+            margin: 1.25rem 0;
+        }
+        .toggle-field input[type="checkbox"] {
+            width: 1.25rem;
+            height: 1.25rem;
+            cursor: pointer;
+        }
+        .toggle-field span {
+            color: #374151;
+            font-size: 0.875rem;
+        }
+        .form-actions {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: 1.25rem;
+        }
+        .user-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+        .summary-chip {
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 1rem 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.375rem;
+        }
+        .summary-chip-label {
+            font-size: 0.875rem;
+            color: #6b7280;
+            font-weight: 500;
+        }
+        .summary-chip strong {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #111827;
+        }
+        .user-list {
+            display: grid;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+        .user-card {
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+            padding: 1.25rem 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: transform 180ms ease, box-shadow 180ms ease;
+            gap: 1.5rem;
+        }
+        .user-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.08);
+        }
+        .user-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .user-name {
+            font-size: 1.0625rem;
+            font-weight: 600;
+            color: #111827;
+            margin-bottom: 0.375rem;
+        }
+        .user-details {
+            font-size: 0.875rem;
+            color: #6b7280;
+            margin-top: 0.375rem;
+            line-height: 1.4;
+        }
+        .user-status {
+            font-size: 0.8125rem;
+            margin-top: 0.5rem;
+            font-weight: 500;
+        }
+        .user-actions {
+            display: flex;
+            gap: 0.625rem;
+            flex-wrap: wrap;
+            flex-shrink: 0;
+        }
+        .user-actions button {
+            font-size: 0.875rem;
+            padding: 0.5rem 0.875rem;
+            border-radius: 10px;
+        }
+        #user-form-feedback {
+            margin-top: 1rem;
+            font-size: 0.875rem;
+        }
+        .empty {
+            color: #6b7280;
+            padding: 2rem;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <section class="hero">
+        <div class="hero-top">
+            <div>
+                <div class="eyebrow">Configurações</div>
+                <h1>Gerenciamento de Usuários</h1>
+            </div>
+            <div class="hero-status-group">
+                <a href="/" class="secondary" style="text-decoration: none; padding: 10px 20px;">← Voltar ao Painel</a>
+            </div>
+        </div>
+        <p>Cadastre e gerencie os usuários com acesso ao painel de arbitragem.</p>
+    </section>
+
+    <section class="user-management-section">
+        <div class="section-heading">
+            <div>
+                <div class="eyebrow">CRUD</div>
+                <h2>Usuários</h2>
+            </div>
+            <button class="primary" id="btn-show-user-form">Novo Usuário</button>
+        </div>
+
+        <div class="user-form-container" id="user-form-container" style="display: none;">
+            <form id="user-form" class="data-form">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="username">Username *</label>
+                        <input type="text" id="username" name="username" required placeholder="Identificação única">
+                    </div>
+                    <div class="form-group">
+                        <label for="name">Nome Completo *</label>
+                        <input type="text" id="name" name="name" required placeholder="Nome completo">
+                    </div>
+                    <div class="form-group">
+                        <label for="mail">Email *</label>
+                        <input type="email" id="mail" name="mail" required placeholder="email@dominio.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Senha *</label>
+                        <input type="password" id="password" name="password" required minlength="6" placeholder="Mínimo 6 caracteres">
+                    </div>
+                </div>
+                <label class="toggle-field" for="stopTrader">
+                    <input type="checkbox" id="stopTrader" name="stopTrader">
+                    <span>Parar operações deste usuário</span>
+                </label>
+                <div class="form-actions">
+                    <button type="submit" class="primary" id="btn-submit-user">Salvar</button>
+                    <button type="button" class="secondary" id="btn-cancel-user-form">Cancelar</button>
+                </div>
+                <div id="user-form-feedback" class="mono"></div>
+            </form>
+        </div>
+
+        <div class="user-summary-grid">
+            <article class="summary-chip">
+                <span class="summary-chip-label">Total</span>
+                <strong id="user-total-count">0</strong>
+            </article>
+            <article class="summary-chip">
+                <span class="summary-chip-label">Ativos</span>
+                <strong id="user-active-count">0</strong>
+            </article>
+            <article class="summary-chip">
+                <span class="summary-chip-label">Parados</span>
+                <strong id="user-stopped-count">0</strong>
+            </article>
+        </div>
+
+        <div id="user-list" class="user-list">
+            <div class="empty">Carregando usuários...</div>
+        </div>
+    </section>
+
+    <script>
+        const btnShowUserForm = document.getElementById('btn-show-user-form');
+        const userFormContainer = document.getElementById('user-form-container');
+        const userForm = document.getElementById('user-form');
+        const btnCancelUserForm = document.getElementById('btn-cancel-user-form');
+        const userFormFeedback = document.getElementById('user-form-feedback');
+        const userList = document.getElementById('user-list');
+        const userIdInput = document.getElementById('user-id');
+        const btnSubmitUser = document.getElementById('btn-submit-user');
+
+        if (btnShowUserForm && userFormContainer) {
+            btnShowUserForm.addEventListener('click', () => {
+                const isHidden = userFormContainer.style.display === 'none' || userFormContainer.style.display === '';
+                userFormContainer.style.display = isHidden ? 'block' : 'none';
+            });
+        }
+
+        if (btnCancelUserForm && userFormContainer) {
+            btnCancelUserForm.addEventListener('click', () => {
+                userFormContainer.style.display = 'none';
+                userForm.reset();
+                if (userIdInput) userIdInput.value = '';
+                userFormFeedback.textContent = '';
+                userFormFeedback.style.color = '#dc2626';
+                if (btnSubmitUser) btnSubmitUser.textContent = 'Salvar';
+            });
+        }
+
+        if (userForm) {
+            userForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                
+                const formData = new FormData(userForm);
+                const userData = {
+                    username: formData.get('username')?.trim(),
+                    name: formData.get('name')?.trim(),
+                    mail: formData.get('mail')?.trim(),
+                    password: formData.get('password'),
+                    stopTrader: formData.get('stopTrader') === 'on'
+                };
+
+                if (!userData.username || !userData.name || !userData.mail || !userData.password) {
+                    userFormFeedback.textContent = 'Todos os campos obrigatórios devem ser preenchidos.';
+                    userFormFeedback.style.color = '#dc2626';
+                    return;
+                }
+
+                if (userData.password.length < 6) {
+                    userFormFeedback.textContent = 'A senha deve ter pelo menos 6 caracteres.';
+                    userFormFeedback.style.color = '#dc2626';
+                    return;
+                }
+
+                userFormFeedback.textContent = 'Salvando...';
+                userFormFeedback.style.color = '#2563eb';
+
+                try {
+                    const isEdit = !!userIdInput?.value;
+                    const url = isEdit ? `/api/users/${encodeURIComponent(userIdInput.value)}` : '/api/users';
+                    const method = isEdit ? 'PUT' : 'POST';
+
+                    const response = await fetch(url, {
+                        method: method,
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(userData)
+                    });
+
+                    const result = await response.json();
+
+                    if (!response.ok) {
+                        throw new Error(result.error || `Falha ao ${isEdit ? 'atualizar' : 'criar'} usuário`);
+                    }
+
+                    userFormFeedback.textContent = isEdit ? 'Usuário atualizado com sucesso!' : 'Usuário criado com sucesso!';
+                    userFormFeedback.style.color = '#16a34a';
+                    
+                    userForm.reset();
+                    if (userIdInput) userIdInput.value = '';
+                    
+                    setTimeout(() => {
+                        userFormContainer.style.display = 'none';
+                        userFormFeedback.textContent = '';
+                    }, 1500);
+
+                    loadUsers();
+                } catch (error) {
+                    userFormFeedback.textContent = error.message;
+                    userFormFeedback.style.color = '#dc2626';
+                }
+            });
+        }
+
+        async function loadUsers() {
+            if (!userList) return;
+
+            try {
+                const response = await fetch('/api/users');
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.error || 'Falha ao carregar usuários');
+                }
+
+                const users = Array.isArray(result.users) ? result.users : [];
+
+                document.getElementById('user-total-count').textContent = users.length;
+                document.getElementById('user-active-count').textContent = users.filter(u => !u.stopTrader).length;
+                document.getElementById('user-stopped-count').textContent = users.filter(u => u.stopTrader).length;
+
+                if (users.length === 0) {
+                    userList.innerHTML = '<div class="empty">Nenhum usuário cadastrado ainda.</div>';
+                    return;
+                }
+
+                userList.innerHTML = users.map(user => `
+                    <div class="user-card" style="${user.stopTrader ? 'opacity: 0.6;' : ''}">
+                        <div class="user-info">
+                            <div class="user-name">
+                                @${user.username}
+                            </div>
+                            <div class="user-details">
+                                ${user.name} · ${user.mail}
+                            </div>
+                            <div class="user-status" style="color: ${user.stopTrader ? '#dc2626' : '#16a34a'};">
+                                ● ${user.stopTrader ? 'Operações paradas' : 'Ativo'}
+                            </div>
+                        </div>
+                        <div class="user-actions">
+                            <button class="secondary" onclick="editUser('${user.username}')">Editar</button>
+                            <button class="secondary" onclick="toggleUserStatus('${user.username}', ${!user.stopTrader})">
+                                ${user.stopTrader ? 'Ativar' : 'Parar'}
+                            </button>
+                            <button class="secondary" onclick="deleteUser('${user.username}')" style="background: #fee2e2; color: #991b1b;">
+                                Excluir
+                            </button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                userList.innerHTML = `<div class="empty">Erro ao carregar usuários: ${error.message}</div>`;
+            }
+        }
+
+        async function editUser(username) {
+            try {
+                const response = await fetch(`/api/users/${encodeURIComponent(username)}`);
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.error || 'Falha ao carregar dados do usuário');
+                }
+
+                const user = result.user;
+                
+                document.getElementById('username').value = user.username || '';
+                document.getElementById('name').value = user.name || '';
+                document.getElementById('mail').value = user.mail || '';
+                document.getElementById('password').value = user.password || '';
+                document.getElementById('stopTrader').checked = user.stopTrader || false;
+
+                userFormContainer.style.display = 'block';
+                if (btnSubmitUser) btnSubmitUser.textContent = 'Atualizar';
+                userFormFeedback.textContent = 'Modo de edição ativado';
+                userFormFeedback.style.color = '#2563eb';
+                
+                userFormContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } catch (error) {
+                alert(`Erro ao carregar usuário: ${error.message}`);
+            }
+        }
+
+        async function toggleUserStatus(username, newStatus) {
+            try {
+                const response = await fetch(`/api/users/${encodeURIComponent(username)}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ stopTrader: newStatus })
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.error || 'Falha ao atualizar status do usuário');
+                }
+
+                loadUsers();
+            } catch (error) {
+                alert(`Erro ao atualizar usuário: ${error.message}`);
+            }
+        }
+
+        async function deleteUser(username) {
+            const confirmed = confirm(`Tem certeza que deseja excluir o usuário "${username}"?\n\nEsta ação não pode ser desfeita.`);
+            
+            if (!confirmed) return;
+
+            try {
+                const response = await fetch(`/api/users/${encodeURIComponent(username)}`, {
+                    method: 'DELETE'
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.error || 'Falha ao excluir usuário');
+                }
+
+                loadUsers();
+            } catch (error) {
+                alert(`Erro ao excluir usuário: ${error.message}`);
+            }
+        }
+
+        loadUsers();
+    </script>
+</body>
+</html>
