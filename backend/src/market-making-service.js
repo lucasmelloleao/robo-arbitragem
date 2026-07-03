@@ -1,12 +1,13 @@
 const ccxt = require('ccxt');
 const fs = require('fs/promises');
 const path = require('path');
-const { getExchangeCredentialsByAcronym } = require('./database');
+const { getExchangeByAcronym, getExchangeCredentialsByAcronym } = require('./database');
 const {
     getCredentialRequirementLabel,
     getExchangeCredentialConfig,
     normalizeExchangeId: normalizeSupportedExchangeId
 } = require('./exchange-credentials');
+const { resolveMarketMakingConfig, resolveTimeout } = require('./exchange-config');
 
 const MAX_REALISTIC_SPREAD = 2.0;
 const HIGH_LIQUIDITY_ASSETS = ['SOL', 'BTC'];
@@ -14,19 +15,6 @@ const HIGH_LIQUIDITY_ASSETS = ['SOL', 'BTC'];
 function parseNumber(value, fallback) {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-function parseSymbolList(value, fallback) {
-    const symbols = String(value || fallback || '')
-        .split(',')
-        .map((item) => item.trim().toUpperCase())
-        .filter(Boolean);
-
-    if (symbols.length === 0) {
-        return [fallback];
-    }
-
-    return [...new Set(symbols)];
 }
 
 function isHighLiquiditySpreadAnomaly(symbol, spreadPercent) {
@@ -39,7 +27,7 @@ function isHighLiquiditySpreadAnomaly(symbol, spreadPercent) {
 }
 
 function normalizeExchangeId(exchangeId) {
-    return normalizeSupportedExchangeId(exchangeId || process.env.MARKET_MAKING_EXCHANGE || process.env.ARBITRAGE_EXCHANGE || 'binance');
+    return normalizeSupportedExchangeId(exchangeId || 'binance');
 }
 
 async function getMissingCredentialGroups(exchangeId) {
@@ -81,31 +69,21 @@ async function assertLiveTradingCredentials(exchangeId) {
     }
 }
 
-function getExchangeSetting(exchangeId, key) {
-    const exchangePrefix = exchangeId.trim().toUpperCase();
-    return process.env[`${exchangePrefix}_${key}`] ?? process.env[key];
-}
-
-function getMarketMakingQuoteBudgetSetting(exchangeId) {
-    return getExchangeSetting(exchangeId, 'MARKET_MAKING_QUOTE_BUDGET')
-        ?? getExchangeSetting(exchangeId, 'MARKET_MAKING_ORDER_SIZE');
-}
-
-function getExchangeTimeoutSettings(exchangeId) {
-    const timeout = Math.max(1000, parseNumber(getExchangeSetting(exchangeId, 'TIMEOUT_MS'), 30000));
+async function getExchangeTimeoutSettings(exchangeId) {
+    const timeout = await resolveTimeout(exchangeId);
     return { timeout };
 }
 
-function shouldUsePrivateApi(exchangeId) {
-    return (getExchangeSetting(exchangeId, 'MARKET_MAKING_MODE') || 'simulation').trim().toLowerCase() === 'live';
+function shouldUsePrivateApi(config) {
+    return (config?.mode || 'simulation').trim().toLowerCase() === 'live';
 }
 
-async function createExchange(exchangeId) {
+async function createExchange(exchangeId, config) {
     const normalizedExchangeId = normalizeExchangeId(exchangeId);
-    const credentials = shouldUsePrivateApi(normalizedExchangeId)
+    const credentials = shouldUsePrivateApi(config)
         ? await resolveExchangeCredentials(normalizedExchangeId)
         : {};
-    const timeoutSettings = getExchangeTimeoutSettings(normalizedExchangeId);
+    const timeoutSettings = await getExchangeTimeoutSettings(normalizedExchangeId);
 
     if (normalizedExchangeId === 'kraken') {
         return new ccxt.kraken({ apiKey: credentials.apiKey, secret: credentials.secret, enableRateLimit: true, ...timeoutSettings });
@@ -142,37 +120,19 @@ async function createExchange(exchangeId) {
     throw new Error(`Exchange inválida para market making: ${normalizedExchangeId}.`);
 }
 
-function getDefaultSymbol(exchangeId) {
-    return ['kraken', 'coinbase'].includes(exchangeId) ? 'BTC/USD' : 'BTC/USDT';
-}
-
 function isFinalOrderStatus(status) {
     return ['closed', 'canceled', 'cancelled', 'rejected', 'expired'].includes((status || '').toLowerCase());
 }
 
 async function createMarketMakingService(exchangeId) {
     const configuredExchangeId = normalizeExchangeId(exchangeId);
-    const exchange = await createExchange(configuredExchangeId);
+    const config = await resolveMarketMakingConfig(configuredExchangeId);
+    const exchange = await createExchange(configuredExchangeId, config);
     const rootDir = path.join(__dirname, '..', '..');
-    const configuredSymbols = parseSymbolList(
-        getExchangeSetting(configuredExchangeId, 'MARKET_MAKING_SYMBOL'),
-        getDefaultSymbol(configuredExchangeId)
-    );
-    const config = {
-        mode: (getExchangeSetting(configuredExchangeId, 'MARKET_MAKING_MODE') || 'simulation').trim().toLowerCase(),
-        keepListening: getExchangeSetting(configuredExchangeId, 'MARKET_MAKING_KEEP_LISTENING') !== 'false',
-        symbols: configuredSymbols,
-        symbol: configuredSymbols[0],
-        orderBookDepth: Math.max(1, Math.floor(parseNumber(getExchangeSetting(configuredExchangeId, 'MARKET_MAKING_ORDER_BOOK_DEPTH'), 10))),
-        quoteOffsetPercent: Math.max(0, parseNumber(getExchangeSetting(configuredExchangeId, 'MARKET_MAKING_QUOTE_OFFSET_PERCENT'), 0.03)),
-        minSpreadPercent: Math.max(0, parseNumber(getExchangeSetting(configuredExchangeId, 'MARKET_MAKING_MIN_SPREAD_PERCENT'), 0.05)),
-        quoteBudget: Math.max(0, parseNumber(getMarketMakingQuoteBudgetSetting(configuredExchangeId), 10)),
-        maxSymbolAttempts: Math.max(1, Math.floor(parseNumber(getExchangeSetting(configuredExchangeId, 'MARKET_MAKING_MAX_SYMBOL_ATTEMPTS'), 10))),
-        updateIntervalMs: Math.max(1000, parseNumber(getExchangeSetting(configuredExchangeId, 'MARKET_MAKING_UPDATE_INTERVAL_MS'), 5000)),
-        opportunityLogFile: getExchangeSetting(configuredExchangeId, 'MARKET_MAKING_OPPORTUNITY_LOG_FILE') || path.join(rootDir, 'logs', `market-making-opportunities-${configuredExchangeId}.jsonl`)
-    };
 
+    config.symbol = config.symbols[0];
     config.orderSize = config.quoteBudget;
+    config.opportunityLogFile = path.join(rootDir, 'logs', `market-making-opportunities-${configuredExchangeId}.jsonl`);
 
     if (config.mode === 'live') {
         await assertLiveTradingCredentials(configuredExchangeId);

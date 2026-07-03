@@ -7,6 +7,7 @@ const { createArbitrageService } = require('./arbitrage-service');
 const { createMarketMakingService } = require('./market-making-service');
 const { connect: connectDatabase } = require('./database');
 const { sendJson, sendNoContent } = require('./http-utils');
+const { normalizeExchangeId: normalizeSupportedExchangeId } = require('./exchange-credentials');
 const { createApiRouter } = require('./routes');
 const { createWebSocketHandlers } = require('./ws/handlers');
 
@@ -52,8 +53,21 @@ function createAppServer() {
         console.error('[server] Falha ao conectar ao MongoDB na inicialização:', error.message);
     });
 
+    function invalidateServiceCaches(exchangeId) {
+        if (!exchangeId) return;
+        const resolvedExchangeId = normalizeSupportedExchangeId(exchangeId);
+        if (services.has(resolvedExchangeId)) {
+            services.delete(resolvedExchangeId);
+            console.log(`[server] Cache do serviço de arbitragem invalidado para: ${resolvedExchangeId}`);
+        }
+        if (marketMakingServices.has(resolvedExchangeId)) {
+            marketMakingServices.delete(resolvedExchangeId);
+            console.log(`[server] Cache do serviço de market making invalidado para: ${resolvedExchangeId}`);
+        }
+    }
+
     async function getService(exchangeId) {
-        const resolvedExchangeId = exchangeId || (process.env.ARBITRAGE_EXCHANGE || 'binance').trim().toLowerCase();
+        const resolvedExchangeId = exchangeId || 'binance';
 
         if (!services.has(resolvedExchangeId)) {
             const servicePromise = createArbitrageService(resolvedExchangeId).catch((error) => {
@@ -67,7 +81,7 @@ function createAppServer() {
     }
 
     async function getMarketMakingService(exchangeId) {
-        const resolvedExchangeId = exchangeId || (process.env.MARKET_MAKING_EXCHANGE || process.env.ARBITRAGE_EXCHANGE || 'binance').trim().toLowerCase();
+        const resolvedExchangeId = exchangeId || 'binance';
 
         if (!marketMakingServices.has(resolvedExchangeId)) {
             const servicePromise = createMarketMakingService(resolvedExchangeId).catch((error) => {
@@ -82,7 +96,8 @@ function createAppServer() {
 
     const apiRouter = createApiRouter({
         getMarketMakingService,
-        getService
+        getService,
+        invalidateServiceCaches
     });
 
     function sendSocketMessage(socket, payload) {
@@ -111,7 +126,7 @@ function createAppServer() {
     }
 
     async function startBackgroundMarketMaking(exchangeId) {
-        const resolvedExchangeId = exchangeId || (process.env.MARKET_MAKING_EXCHANGE || process.env.ARBITRAGE_EXCHANGE || 'binance').trim().toLowerCase();
+        const resolvedExchangeId = exchangeId || 'binance';
 
         if (backgroundMarketMakingSubscriptions.has(resolvedExchangeId)) {
             const currentSubscription = backgroundMarketMakingSubscriptions.get(resolvedExchangeId);
@@ -257,7 +272,7 @@ function createAppServer() {
     }
 
     async function subscribeSocketToMarketMaking(socket, exchangeId) {
-        const resolvedExchangeId = exchangeId || (process.env.MARKET_MAKING_EXCHANGE || process.env.ARBITRAGE_EXCHANGE || 'binance').trim().toLowerCase();
+        const resolvedExchangeId = exchangeId || 'binance';
 
         if (!socketMarketMakingSubscriptions.has(socket)) {
             socketMarketMakingSubscriptions.set(socket, new Map());
@@ -358,7 +373,7 @@ function createAppServer() {
     }
 
     function unsubscribeSocketFromMarketMaking(socket, exchangeId) {
-        const resolvedExchangeId = exchangeId || (process.env.MARKET_MAKING_EXCHANGE || process.env.ARBITRAGE_EXCHANGE || 'binance').trim().toLowerCase();
+        const resolvedExchangeId = exchangeId || 'binance';
         const subscriptions = socketMarketMakingSubscriptions.get(socket);
 
         if (!subscriptions || !subscriptions.has(resolvedExchangeId)) {

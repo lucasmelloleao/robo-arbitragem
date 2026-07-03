@@ -106,10 +106,31 @@ export function initManagementPage() {
             }
             exchangeForm.elements.name.value = exchange.name || '';
             exchangeForm.elements.acronym.value = exchange.acronym || '';
+            exchangeForm.elements.envInfo.value = exchange.envInfo || '';
             exchangeForm.elements.notes.value = exchange.notes || '';
             if (exchangeForm.elements.active) {
                 exchangeForm.elements.active.checked = Boolean(exchange.active);
             }
+
+            function populateConfig(prefix, configObject) {
+                if (!configObject) {
+                    return;
+                }
+                for (const [key, value] of Object.entries(configObject)) {
+                    const fieldName = `${prefix}.${key}`;
+                    const element = exchangeForm.elements[fieldName];
+                    if (element) {
+                        if (element.type === 'checkbox') {
+                            element.checked = Boolean(value);
+                        } else if (value !== null && value !== undefined) {
+                            element.value = value;
+                        }
+                    }
+                }
+            }
+
+            populateConfig('arbitrageConfig', exchange.arbitrageConfig);
+            populateConfig('marketMakingConfig', exchange.marketMakingConfig);
             updateExchangePasswordField(exchange.acronym);
         } else {
             if (exchangeFormTitle) {
@@ -358,9 +379,44 @@ export function initManagementPage() {
             apiKey: formData.get('apiKey')?.trim(),
             secretKey: formData.get('secretKey')?.trim(),
             password: formData.get('password')?.trim(),
+            envInfo: formData.get('envInfo')?.trim(),
             notes: formData.get('notes')?.trim(),
             active: exchangeForm.elements.active.checked
         };
+
+        function processConfig(prefix, form) {
+            const config = {};
+            let hasValue = false;
+
+            for (const element of form.elements) {
+                if (!element.name || !element.name.startsWith(prefix)) {
+                    continue;
+                }
+
+                const key = element.name.substring(prefix.length);
+                let value;
+
+                if (element.type === 'checkbox') {
+                    value = element.checked;
+                } else if (element.type === 'number') {
+                    value = element.value.trim() === '' ? undefined : Number(element.value);
+                } else {
+                    value = element.value.trim() === '' ? undefined : element.value.trim();
+                }
+
+                if (value !== undefined) {
+                    config[key] = value;
+                    hasValue = true;
+                }
+            }
+            return hasValue ? config : null;
+        }
+
+        const arbitrageConfig = processConfig('arbitrageConfig.', exchangeForm);
+        if (arbitrageConfig) payload.arbitrageConfig = arbitrageConfig;
+
+        const marketMakingConfig = processConfig('marketMakingConfig.', exchangeForm);
+        if (marketMakingConfig) payload.marketMakingConfig = marketMakingConfig;
 
         if (!payload.name || !payload.acronym) {
             exchangeFormFeedback.textContent = 'Nome e sigla são obrigatórios.';

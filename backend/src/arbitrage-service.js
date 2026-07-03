@@ -7,27 +7,10 @@ const {
     getExchangeCredentialConfig,
     normalizeExchangeId: normalizeSupportedExchangeId
 } = require('./exchange-credentials');
+const { resolveArbitrageConfig, resolveTimeout } = require('./exchange-config');
 
 const MAX_REALISTIC_SPREAD = 2.0;
 const HIGH_LIQUIDITY_ASSETS = ['SOL', 'BTC'];
-
-function parseAssetList(envValue, fallback) {
-    if (!envValue) {
-        return fallback;
-    }
-
-    const items = envValue
-        .split(',')
-        .map((item) => item.trim().toUpperCase())
-        .filter(Boolean);
-
-    return items.length > 0 ? items : fallback;
-}
-
-function parseNumber(envValue, fallback) {
-    const parsed = Number(envValue);
-    return Number.isFinite(parsed) ? parsed : fallback;
-}
 
 function isHighLiquiditySpreadAnomaly(symbol, spreadPercent) {
     if (!Number.isFinite(spreadPercent) || spreadPercent <= MAX_REALISTIC_SPREAD) {
@@ -39,7 +22,7 @@ function isHighLiquiditySpreadAnomaly(symbol, spreadPercent) {
 }
 
 function normalizeExchangeId(exchangeId) {
-    return normalizeSupportedExchangeId(exchangeId || process.env.ARBITRAGE_EXCHANGE || 'binance');
+    return normalizeSupportedExchangeId(exchangeId || 'binance');
 }
 
 async function getMissingCredentialGroups(exchangeId) {
@@ -81,21 +64,17 @@ async function assertLiveTradingCredentials(exchangeId) {
     }
 }
 
-function getExchangeTimeoutSettings(exchangeId) {
-    const timeout = Math.max(1000, parseNumber(getExchangeSetting(exchangeId, 'TIMEOUT_MS'), 30000));
+async function getExchangeTimeoutSettings(exchangeId) {
+    const timeout = await resolveTimeout(exchangeId);
     return { timeout };
 }
 
-function shouldUsePrivateApi(exchangeId) {
-    return getExchangeSetting(exchangeId, 'ARBITRAGE_ENABLE_LIVE_TRADING') === 'true';
-}
-
-async function createExchange(exchangeId) {
+async function createExchange(exchangeId, config) {
     const normalizedExchangeId = normalizeExchangeId(exchangeId);
-    const credentials = shouldUsePrivateApi(normalizedExchangeId)
+    const credentials = config?.enableLiveTrading
         ? await resolveExchangeCredentials(normalizedExchangeId)
         : {};
-    const timeoutSettings = getExchangeTimeoutSettings(normalizedExchangeId);
+    const timeoutSettings = await getExchangeTimeoutSettings(normalizedExchangeId);
 
     if (normalizedExchangeId === 'kraken') {
         return new ccxt.kraken({
@@ -197,193 +176,13 @@ async function createExchange(exchangeId) {
     throw new Error(`Exchange inválida: ${normalizedExchangeId}. Use "binance", "kraken", "bybit", "mexc", "coinbase", "gateio", "okx" ou "woo".`);
 }
 
-function getExchangeSetting(exchangeId, key) {
-    const exchangePrefix = exchangeId.trim().toUpperCase();
-    return process.env[`${exchangePrefix}_${key}`] ?? process.env[key];
-}
-
 async function createArbitrageService(exchangeId) {
     const rootDir = path.join(__dirname, '..', '..');
     const configuredExchangeId = normalizeExchangeId(exchangeId);
-    const exchange = await createExchange(exchangeId);
 
-    const BASE_DEFAULTS = {
-        startAssets: ['USDT' ],
-        bridgeAssets: ['BTC', 'ETH'],
-        targetAssets: ['ETH'],
-        investmentAmount: 10000,
-        tradingFee: 0.001,
-        scanIntervalMs: 3000,
-        maxTrianglesPerCycle: 8,
-        orderBookDepth: 5,
-        maxSpreadPercent: 0.4,
-        minVolumeBuffer: 1.05,
-        minProfitPercent: 0.1,
-        maxSlippagePercent: 0.3,
-        opportunityLogFile: path.join(rootDir, 'logs', 'arbitrage-opportunities.jsonl')
-    };
-
-    const EXCHANGE_DEFAULTS = {
-        kraken: {
-            startAssets: ['USD'],
-            bridgeAssets: ['BTC', 'ETH'],
-            targetAssets: ['ETH'],
-            investmentAmount: 100,
-            tradingFee: 0.004,
-            scanIntervalMs: 5000,
-            maxTrianglesPerCycle: 6,
-            orderBookDepth: 10,
-            maxSpreadPercent: 0.25,
-            minVolumeBuffer: 1.1,
-            minProfitPercent: 0.3,
-            maxSlippagePercent: 0.2,
-            opportunityLogFile: path.join(rootDir, 'logs', 'arbitrage-opportunities.jsonl')
-        },
-        binance: {
-            startAssets: ['USDT'],
-            bridgeAssets: ['BTC', 'ETH'],
-            targetAssets: ['ETH'],
-            investmentAmount: 100,
-            tradingFee: 0.001,
-            scanIntervalMs: 3000,
-            maxTrianglesPerCycle: 8,
-            orderBookDepth: 10,
-            maxSpreadPercent: 0.2,
-            minVolumeBuffer: 1.05,
-            minProfitPercent: 0.1,
-            maxSlippagePercent: 0.15,
-            opportunityLogFile: path.join(rootDir, 'logs', 'arbitrage-opportunities.jsonl')
-        },
-        bybit: {
-            startAssets: ['USDT'],
-            bridgeAssets: ['BTC', 'ETH'],
-            targetAssets: ['ETH'],
-            investmentAmount: 100,
-            tradingFee: 0.001,
-            scanIntervalMs: 3000,
-            maxTrianglesPerCycle: 8,
-            orderBookDepth: 10,
-            maxSpreadPercent: 0.2,
-            minVolumeBuffer: 1.05,
-            minProfitPercent: 0.1,
-            maxSlippagePercent: 0.15,
-            opportunityLogFile: path.join(rootDir, 'logs', 'arbitrage-opportunities-bybit.jsonl')
-        },
-        mexc: {
-            startAssets: ['USDT', 'USDC'],
-            bridgeAssets: ['BTC', 'ETH', 'SOL', 'XRP'],
-            targetAssets: ['ETH', 'SOL', 'XRP', 'DOGE'],
-            investmentAmount: 100,
-            tradingFee: 0.001,
-            scanIntervalMs: 3000,
-            maxTrianglesPerCycle: 8,
-            orderBookDepth: 10,
-            maxSpreadPercent: 0.2,
-            minVolumeBuffer: 1.05,
-            minProfitPercent: 0.1,
-            maxSlippagePercent: 0.15,
-            opportunityLogFile: path.join(rootDir, 'logs', 'arbitrage-opportunities-mexc.jsonl')
-        },
-        coinbase: {
-            startAssets: ['USD', 'USDC', 'USDT'],
-            bridgeAssets: ['BTC', 'ETH', 'SOL'],
-            targetAssets: ['ETH', 'SOL'],
-            investmentAmount: 100,
-            tradingFee: 0.004,
-            scanIntervalMs: 5000,
-            maxTrianglesPerCycle: 6,
-            orderBookDepth: 10,
-            maxSpreadPercent: 0.25,
-            minVolumeBuffer: 1.1,
-            minProfitPercent: 0.2,
-            maxSlippagePercent: 0.2,
-            opportunityLogFile: path.join(rootDir, 'logs', 'arbitrage-opportunities-coinbase.jsonl')
-        },
-        gateio: {
-            startAssets: ['USDT'],
-            bridgeAssets: ['BTC', 'ETH'],
-            targetAssets: ['ETH'],
-            investmentAmount: 100,
-            tradingFee: 0.001,
-            scanIntervalMs: 3000,
-            maxTrianglesPerCycle: 8,
-            orderBookDepth: 10,
-            maxSpreadPercent: 0.2,
-            minVolumeBuffer: 1.05,
-            minProfitPercent: 0.1,
-            maxSlippagePercent: 0.15,
-            opportunityLogFile: path.join(rootDir, 'logs', 'arbitrage-opportunities-gateio.jsonl')
-        },
-        okx: {
-            startAssets: ['USDT'],
-            bridgeAssets: ['BTC', 'ETH'],
-            targetAssets: ['ETH'],
-            investmentAmount: 100,
-            tradingFee: 0.001,
-            scanIntervalMs: 3000,
-            maxTrianglesPerCycle: 8,
-            orderBookDepth: 10,
-            maxSpreadPercent: 0.2,
-            minVolumeBuffer: 1.05,
-            minProfitPercent: 0.1,
-            maxSlippagePercent: 0.15,
-            opportunityLogFile: path.join(rootDir, 'logs', 'arbitrage-opportunities-okx.jsonl')
-        },
-        woo: {
-            startAssets: ['USDT', 'USDC'],
-            bridgeAssets: ['BTC', 'ETH', 'SOL'],
-            targetAssets: ['ETH', 'SOL', 'XRP'],
-            investmentAmount: 100,
-            tradingFee: 0.001,
-            scanIntervalMs: 3000,
-            maxTrianglesPerCycle: 8,
-            orderBookDepth: 10,
-            maxSpreadPercent: 0.2,
-            minVolumeBuffer: 1.05,
-            minProfitPercent: 0.1,
-            maxSlippagePercent: 0.15,
-            opportunityLogFile: path.join(rootDir, 'logs', 'arbitrage-opportunities-woo.jsonl')
-        }
-    };
-
-    const defaults = {
-        ...BASE_DEFAULTS,
-        ...(EXCHANGE_DEFAULTS[configuredExchangeId] || {})
-    };
-
-    const envConfig = {
-        startAssets: getExchangeSetting(configuredExchangeId, 'ARBITRAGE_START_ASSETS'),
-        bridgeAssets: getExchangeSetting(configuredExchangeId, 'ARBITRAGE_BRIDGE_ASSETS'),
-        targetAssets: getExchangeSetting(configuredExchangeId, 'ARBITRAGE_TARGET_ASSETS'),
-        investmentAmount: getExchangeSetting(configuredExchangeId, 'ARBITRAGE_INVESTMENT_AMOUNT'),
-        tradingFee: getExchangeSetting(configuredExchangeId, 'ARBITRAGE_TRADING_FEE'),
-        scanIntervalMs: getExchangeSetting(configuredExchangeId, 'ARBITRAGE_SCAN_INTERVAL_MS'),
-        maxTrianglesPerCycle: getExchangeSetting(configuredExchangeId, 'ARBITRAGE_MAX_TRIANGLES_PER_CYCLE'),
-        orderBookDepth: getExchangeSetting(configuredExchangeId, 'ARBITRAGE_ORDER_BOOK_DEPTH'),
-        maxSpreadPercent: getExchangeSetting(configuredExchangeId, 'ARBITRAGE_MAX_SPREAD_PERCENT'),
-        minVolumeBuffer: getExchangeSetting(configuredExchangeId, 'ARBITRAGE_MIN_VOLUME_BUFFER'),
-        minProfitPercent: getExchangeSetting(configuredExchangeId, 'ARBITRAGE_MIN_PROFIT_PERCENT'),
-        maxSlippagePercent: getExchangeSetting(configuredExchangeId, 'ARBITRAGE_MAX_SLIPPAGE_PERCENT'),
-        enableLiveTrading: getExchangeSetting(configuredExchangeId, 'ARBITRAGE_ENABLE_LIVE_TRADING'),
-        opportunityLogFile: getExchangeSetting(configuredExchangeId, 'ARBITRAGE_OPPORTUNITY_LOG_FILE')
-    };
-
-    const config = {
-        startAssets: parseAssetList(envConfig.startAssets, defaults.startAssets),
-        bridgeAssets: parseAssetList(envConfig.bridgeAssets, defaults.bridgeAssets),
-        targetAssets: parseAssetList(envConfig.targetAssets, defaults.targetAssets),
-        investmentAmount: parseNumber(envConfig.investmentAmount, defaults.investmentAmount),
-        tradingFee: parseNumber(envConfig.tradingFee, defaults.tradingFee),
-        scanIntervalMs: Math.max(1000, parseNumber(envConfig.scanIntervalMs, defaults.scanIntervalMs)),
-        maxTrianglesPerCycle: Math.max(1, Math.floor(parseNumber(envConfig.maxTrianglesPerCycle, defaults.maxTrianglesPerCycle))),
-        orderBookDepth: Math.max(1, Math.floor(parseNumber(envConfig.orderBookDepth, defaults.orderBookDepth))),
-        maxSpreadPercent: Math.max(0, parseNumber(envConfig.maxSpreadPercent, defaults.maxSpreadPercent)),
-        minVolumeBuffer: Math.max(1, parseNumber(envConfig.minVolumeBuffer, defaults.minVolumeBuffer)),
-        minProfitPercent: parseNumber(envConfig.minProfitPercent, defaults.minProfitPercent),
-        maxSlippagePercent: Math.max(0, parseNumber(envConfig.maxSlippagePercent, defaults.maxSlippagePercent)),
-        enableLiveTrading: envConfig.enableLiveTrading === 'true',
-        opportunityLogFile: envConfig.opportunityLogFile || defaults.opportunityLogFile
-    };
+    const config = await resolveArbitrageConfig(configuredExchangeId);
+    const exchange = await createExchange(configuredExchangeId, config);
+    config.opportunityLogFile = path.join(rootDir, 'logs', `arbitrage-opportunities-${configuredExchangeId}.jsonl`);
 
     if (config.enableLiveTrading) {
         await assertLiveTradingCredentials(configuredExchangeId);

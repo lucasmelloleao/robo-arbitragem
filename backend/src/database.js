@@ -1,7 +1,6 @@
 const mongoose = require('mongoose');
 const User = require('./models/User');
 const Exchange = require('./models/Exchange');
-const { listEnvExchangeSeedRecords } = require('./exchange-credentials');
 
 const databaseUri = process.env.MONGODB_URI;
 let isConnected = false;
@@ -107,11 +106,6 @@ async function connect() {
         isConnected = true;
         retryCount = 0;
         console.log('[database] Conectado ao MongoDB');
-        const syncSummary = await syncExchangesFromEnv();
-
-        if (syncSummary.created > 0 || syncSummary.updated > 0) {
-            console.log(`[database] Exchanges sincronizadas do .env: ${syncSummary.created} criadas, ${syncSummary.updated} atualizadas, ${syncSummary.skipped} sem mudanças.`);
-        }
     } catch (error) {
         connectionPromise = null;
         
@@ -168,7 +162,7 @@ async function updateUserStopTrader(username, stopTrader) {
     const result = await User.findOneAndUpdate(
         { username },
         { stopTrader },
-        { new: true }
+        { returnDocument: 'after' }
     ).lean();
 
     return result;
@@ -185,74 +179,18 @@ async function getAllExchanges() {
     return exchanges.map(sanitizeExchange);
 }
 
+async function getExchangeByAcronym(acronym) {
+    assertDatabaseAvailable();
+    return Exchange.findOne({ acronym: String(acronym || '').trim().toUpperCase() })
+        .select('+secretKey +password +arbitrageConfig +marketMakingConfig')
+        .lean();
+}
+
 async function getExchangeCredentialsByAcronym(acronym) {
     assertDatabaseAvailable();
     return Exchange.findOne({ acronym: String(acronym || '').trim().toUpperCase() })
         .select('+secretKey +password apiKey acronym active')
         .lean();
-}
-
-async function syncExchangesFromEnv(options = {}) {
-    assertDatabaseAvailable();
-
-    const { overwriteCredentials = false } = options;
-    const records = listEnvExchangeSeedRecords();
-    const summary = {
-        created: 0,
-        updated: 0,
-        skipped: 0
-    };
-
-    for (const record of records) {
-        const existing = await Exchange.findOne({ acronym: record.acronym }).select('+secretKey +password');
-
-        if (!existing) {
-            const exchange = new Exchange(record);
-            await exchange.save();
-            summary.created += 1;
-            continue;
-        }
-
-        let changed = false;
-
-        if (!existing.name && record.name) {
-            existing.name = record.name;
-            changed = true;
-        }
-
-        if ((!existing.notes || existing.notes === 'Importado automaticamente do .env') && record.notes && existing.notes !== record.notes) {
-            existing.notes = record.notes;
-            changed = true;
-        }
-
-        if (typeof record.envInfo === 'string' && existing.envInfo !== record.envInfo) {
-            existing.envInfo = record.envInfo;
-            changed = true;
-        }
-
-        for (const field of ['apiKey', 'secretKey', 'password']) {
-            if (!record[field]) {
-                continue;
-            }
-
-            if (overwriteCredentials || !existing[field]) {
-                if (existing[field] !== record[field]) {
-                    existing[field] = record[field];
-                    changed = true;
-                }
-            }
-        }
-
-        if (changed) {
-            await existing.save();
-            summary.updated += 1;
-            continue;
-        }
-
-        summary.skipped += 1;
-    }
-
-    return summary;
 }
 
 async function createExchange(exchangeData) {
@@ -267,7 +205,7 @@ async function updateExchange(id, updates) {
     const exchange = await Exchange.findByIdAndUpdate(
         id,
         updates,
-        { new: true }
+        { returnDocument: 'after' }
     ).select('+secretKey +password').lean();
     return sanitizeExchange(exchange);
 }
@@ -298,8 +236,8 @@ module.exports = {
     updateUserStopTrader,
     getAllUsers,
     getAllExchanges,
+    getExchangeByAcronym,
     getExchangeCredentialsByAcronym,
-    syncExchangesFromEnv,
     createExchange,
     updateExchange,
     deleteExchange,
