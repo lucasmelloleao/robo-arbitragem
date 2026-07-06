@@ -1,8 +1,8 @@
 const { sendJson } = require('../http-utils');
 const { getArbitrageStatus, runArbitrageScan } = require('../arbitrage-service');
 
-async function getArbitrageStatusHandler(request, response, context) {
-    const { exchangeId } = request.params || {};
+async function getArbitrageStatusHandler({ response, params, context }) {
+    const { exchangeId } = params || {};
     
     try {
         const service = await context.getService(exchangeId);
@@ -14,8 +14,8 @@ async function getArbitrageStatusHandler(request, response, context) {
     }
 }
 
-async function runArbitrageScanHandler(request, response, context) {
-    const { exchangeId } = request.params || {};
+async function runArbitrageScanHandler({ response, params, context }) {
+    const { exchangeId } = params || {};
     
     try {
         const service = await context.getService(exchangeId);
@@ -32,8 +32,8 @@ async function runArbitrageScanHandler(request, response, context) {
     }
 }
 
-async function getArbitrageLogsHandler(request, response, context) {
-    const { exchangeId } = request.params || {};
+async function getArbitrageLogsHandler({ response, params, context }) {
+    const { exchangeId } = params || {};
     
     try {
         const service = await context.getService(exchangeId);

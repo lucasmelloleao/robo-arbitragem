@@ -93,6 +93,8 @@ async function createExchange(exchangeId, config) {
             ...timeoutSettings,
             options: {
                 defaultType: 'spot',
+                adjustForTimeDifference: true,
+                'recvWindow': 60000,
                 fetchCurrencies: false
             }
         });

@@ -90,7 +90,18 @@ async function createExchange(exchangeId, config) {
     }
 
     if (normalizedExchangeId === 'binance') {
-        return new ccxt.binance({ apiKey: credentials.apiKey, secret: credentials.secret, enableRateLimit: true, ...timeoutSettings, options: { defaultType: 'spot', fetchCurrencies: false } });
+        return new ccxt.binance({ 
+            apiKey: credentials.apiKey, 
+            secret: credentials.secret, 
+            enableRateLimit: true, 
+            ...timeoutSettings, 
+            options: { 
+                defaultType: 'spot', 
+                adjustForTimeDifference: true,
+                'recvWindow': 60000,
+                fetchCurrencies: false 
+            } 
+        });
     }
 
     if (normalizedExchangeId === 'bybit') {
@@ -98,7 +109,18 @@ async function createExchange(exchangeId, config) {
     }
 
     if (normalizedExchangeId === 'mexc') {
-        return new ccxt.mexc({ apiKey: credentials.apiKey, secret: credentials.secret, enableRateLimit: true, ...timeoutSettings, options: { defaultType: 'spot', fetchCurrencies: false } });
+        return new ccxt.mexc({ 
+            apiKey: credentials.apiKey, 
+            secret: credentials.secret, 
+            enableRateLimit: true, 
+            ...timeoutSettings, 
+            options: { 
+                defaultType: 'spot', 
+                adjustForTimeDifference: true,
+                'recvWindow': 60000,
+                fetchCurrencies: false 
+            } 
+        });
     }
 
     if (normalizedExchangeId === 'coinbase') {

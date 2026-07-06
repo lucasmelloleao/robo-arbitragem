@@ -2,7 +2,7 @@ require('dotenv').config();
 
 const { createAppServer } = require('./server');
 
-const port = Number(process.env.PORT) || 3000;
+const port = 8081;
 const server = createAppServer();
 
 server.listen(port, () => {
