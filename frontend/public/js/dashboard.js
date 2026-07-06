@@ -10,10 +10,13 @@ import {
     getMarketMakingLoopDescription,
     getVisibleExchanges,
     infoMetricCard,
+    loadExchangeStatuses,
     metricCard
 } from './shared.js';
 
-export function initDashboardPage() {
+export async function initDashboardPage() {
+    await loadExchangeStatuses().catch(() => {});
+
     const modeLabel = document.getElementById('mode-label');
     const feedback = document.getElementById('feedback');
     const runAllButton = document.getElementById('run-all');
@@ -39,7 +42,6 @@ export function initDashboardPage() {
     const marketMakingFavorableOpportunities = document.getElementById('market-making-favorable-opportunities');
     const marketMakingHistory = document.getElementById('market-making-history');
 
-
     const exchangeViews = new Map();
     const marketMakingExchangeViews = new Map();
     const activeSubscriptions = new Set();
@@ -51,7 +53,7 @@ export function initDashboardPage() {
     let socketReadyPromise;
     let socketRequestId = 0;
     let selectedMarketMakingExchangeId = null;
-    
+
     function ensureRequiredElements() {
         const currentExchangeGrid = document.getElementById('exchange-grid');
         const currentMarketMakingGrid = document.getElementById('market-making-grid');
@@ -62,7 +64,7 @@ export function initDashboardPage() {
         const currentListenAllButton = document.getElementById('listen-all');
         const currentListenAllMarketMakingButton = document.getElementById('listen-market-making-all');
         const currentRefreshAllButton = document.getElementById('refresh-all');
-        
+
         return Boolean(
             currentExchangeGrid &&
             currentMarketMakingGrid &&
@@ -1191,7 +1193,7 @@ export function initDashboardPage() {
     updateListenMarketMakingButton();
     updateListenAllMarketMakingButton();
     updateCancelMarketMakingOrdersButton(null);
-    
+
     if (ensureRequiredElements()) {
         initializeExchangePanels();
         runAllButton.addEventListener('click', runAllScans);
@@ -1270,7 +1272,7 @@ export function initDashboardPage() {
     window.addEventListener('init-panels', () => {
         if (ensureRequiredElements() && exchangeViews.size === 0) {
             initializeExchangePanels();
-            
+
             const visibleExchanges = getVisibleExchanges();
             Promise.all(visibleExchanges.map((exchangeId) => loadDashboard(exchangeId))).catch((error) => {
                 feedback.textContent = error.message;

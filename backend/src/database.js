@@ -186,6 +186,24 @@ async function getExchangeByAcronym(acronym) {
         .lean();
 }
 
+async function getActiveExchangeStatuses() {
+    assertDatabaseAvailable();
+    const exchanges = await Exchange.find({}).select('acronym active').lean();
+    const statusMap = {};
+    for (const ex of exchanges) {
+        statusMap[ex.acronym] = ex.active;
+    }
+    return statusMap;
+}
+
+async function getExchangeStatusByAcronym(acronym) {
+    assertDatabaseAvailable();
+    const exchange = await Exchange.findOne({ acronym: String(acronym || '').trim().toUpperCase() })
+        .select('acronym active')
+        .lean();
+    return exchange ? exchange.active : null;
+}
+
 async function getExchangeCredentialsByAcronym(acronym) {
     assertDatabaseAvailable();
     return Exchange.findOne({ acronym: String(acronym || '').trim().toUpperCase() })
@@ -238,6 +256,8 @@ module.exports = {
     getAllExchanges,
     getExchangeByAcronym,
     getExchangeCredentialsByAcronym,
+    getActiveExchangeStatuses,
+    getExchangeStatusByAcronym,
     createExchange,
     updateExchange,
     deleteExchange,

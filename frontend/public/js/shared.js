@@ -1,6 +1,30 @@
 export const ALL_EXCHANGES = ['binance', 'kraken', 'bybit', 'mexc', 'coinbase', 'gateio', 'okx', 'woo'];
 const EXCHANGES_WITH_PASSPHRASE = new Set(['okx']);
 
+const EXCHANGE_ACRONYM_MAP = {
+    binance: 'BINANCE',
+    kraken: 'KRAKEN',
+    bybit: 'BYBIT',
+    mexc: 'MEXC',
+    coinbase: 'COINBASE',
+    gateio: 'GATEIO',
+    okx: 'OKX',
+    woo: 'WOO'
+};
+
+async function loadActiveExchangeStatuses() {
+    try {
+        const result = await fetch('/api/exchanges/statuses');
+        const data = await result.json();
+        return data.statuses || {};
+    } catch {
+        return {};
+    }
+}
+
+let cachedExchangeStatuses = null;
+let exchangeStatusesPromise = null;
+
 export function getVisibleExchanges() {
     const [, firstSegment] = window.location.pathname.split('/');
 
@@ -12,7 +36,29 @@ export function getVisibleExchanges() {
         return [firstSegment];
     }
 
+    if (cachedExchangeStatuses) {
+        return ALL_EXCHANGES.filter((id) => cachedExchangeStatuses[EXCHANGE_ACRONYM_MAP[id]] !== false);
+    }
+
     return ALL_EXCHANGES;
+}
+
+export async function loadExchangeStatuses() {
+    if (exchangeStatusesPromise) {
+        return exchangeStatusesPromise;
+    }
+    exchangeStatusesPromise = loadActiveExchangeStatuses().then((statuses) => {
+        cachedExchangeStatuses = statuses;
+        return statuses;
+    });
+    return exchangeStatusesPromise;
+}
+
+export function isExchangeActive(exchangeId) {
+    if (!cachedExchangeStatuses) {
+        return true;
+    }
+    return cachedExchangeStatuses[EXCHANGE_ACRONYM_MAP[exchangeId]] !== false;
 }
 
 export function getExchangeTitle(exchangeId) {

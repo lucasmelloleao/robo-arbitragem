@@ -81,6 +81,14 @@ async function resolveArbitrageConfig(exchangeId) {
         if (dbConfig && dbConfig[dbField] !== undefined && dbConfig[dbField] !== null) {
             return parseFn(dbConfig[dbField], defaultValue);
         }
+        const envKey = `${normalId.toUpperCase()}_ARBITRAGE_${toEnvKey(dbField)}`;
+        if (process.env[envKey] !== undefined) {
+            return parseFn(process.env[envKey], defaultValue);
+        }
+        const genericEnvKey = `ARBITRAGE_${toEnvKey(dbField)}`;
+        if (process.env[genericEnvKey] !== undefined) {
+            return parseFn(process.env[genericEnvKey], defaultValue);
+        }
         return defaultValue;
     }
 

@@ -5,6 +5,7 @@ const {
     updateExchange,
     deleteExchange,
     toggleExchangeStatus,
+    getActiveExchangeStatuses,
 } = require('../database');
 const Exchange = require('../models/Exchange');
 const { getExchangeCredentialConfig, SUPPORTED_EXCHANGES } = require('../exchange-credentials');
@@ -225,6 +226,15 @@ async function getExchangeById({ request, response, params }) {
     }
 }
 
+async function getExchangeStatusesHandler({ response }) {
+    try {
+        const statuses = await getActiveExchangeStatuses();
+        sendJson(response, 200, { statuses });
+    } catch (error) {
+        sendJson(response, 500, { error: error.message });
+    }
+}
+
 async function syncExchangesFromEnvHandler({ response }) {
     try {
         const supportedExchanges = ['binance', 'kraken', 'bybit', 'mexc', 'coinbase', 'gateio', 'okx', 'woo'];
@@ -270,13 +280,14 @@ async function syncExchangesFromEnvHandler({ response }) {
 
 function registerExchangeRoutes(router) {
     router.register('GET', '/api/exchanges', listExchanges);
+    router.register('GET', '/api/exchanges/statuses', getExchangeStatusesHandler);
+    router.register('GET', '/api/exchanges/sync-env', syncExchangesFromEnvHandler);
+    router.register('POST', '/api/exchanges/sync-env', syncExchangesFromEnvHandler);
     router.register('GET', '/api/exchanges/:id', getExchangeById);
     router.register('POST', '/api/exchanges', createExchangeHandler);
     router.register('PUT', '/api/exchanges/:id', updateExchangeHandler);
     router.register('DELETE', '/api/exchanges/:id', deleteExchangeHandler);
     router.register('PATCH', '/api/exchanges/:id/toggle', toggleExchangeHandler);
-    router.register('GET', '/api/exchanges/sync-env', syncExchangesFromEnvHandler);
-    router.register('POST', '/api/exchanges/sync-env', syncExchangesFromEnvHandler);
 }
 
 module.exports = { registerExchangeRoutes };
