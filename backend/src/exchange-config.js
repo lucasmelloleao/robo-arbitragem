@@ -17,6 +17,10 @@ function parseSymbolList(value, fallback) {
     return items.length > 0 ? [...new Set(items)] : [fallback];
 }
 
+function toEnvKey(camelCase) {
+    return camelCase.replace(/([A-Z])/g, '_$1').toUpperCase();
+}
+
 const ARBITRAGE_DEFAULTS = {
     base: {
         startAssets: ['USDT'],
@@ -115,6 +119,14 @@ async function resolveMarketMakingConfig(exchangeId) {
     function getSetting(dbField, parseFn, defaultValue) {
         if (dbConfig && dbConfig[dbField] !== undefined && dbConfig[dbField] !== null) {
             return parseFn(dbConfig[dbField], defaultValue);
+        }
+        const envKey = `${normalId.toUpperCase()}_MARKET_MAKING_${toEnvKey(dbField)}`;
+        if (process.env[envKey] !== undefined) {
+            return parseFn(process.env[envKey], defaultValue);
+        }
+        const genericEnvKey = `MARKET_MAKING_${toEnvKey(dbField)}`;
+        if (process.env[genericEnvKey] !== undefined) {
+            return parseFn(process.env[genericEnvKey], defaultValue);
         }
         return defaultValue;
     }
