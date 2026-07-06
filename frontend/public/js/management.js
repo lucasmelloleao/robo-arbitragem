@@ -16,7 +16,6 @@ export function initManagementPage() {
     const userCountLabel = document.getElementById('user-count-label');
 
     const btnShowExchangeForm = document.getElementById('btn-show-exchange-form');
-    const btnSyncExchangeEnv = document.getElementById('btn-sync-exchange-env');
     const exchangeFormContainer = document.getElementById('exchange-form-container');
     const exchangeForm = document.getElementById('exchange-form');
     const btnCancelExchangeForm = document.getElementById('btn-cancel-exchange-form');
@@ -31,8 +30,6 @@ export function initManagementPage() {
     const exchangeTotalCount = document.getElementById('exchange-total-count');
     const exchangeActiveCount = document.getElementById('exchange-active-count');
     const exchangeInactiveCount = document.getElementById('exchange-inactive-count');
-    const exchangeSyncFeedback = document.getElementById('exchange-sync-feedback');
-
     const hasManagementPage = Boolean(userForm || userList || exchangeForm || exchangeList);
 
     if (!hasManagementPage) {
@@ -226,7 +223,7 @@ export function initManagementPage() {
 
     async function toggleStopTrader(username, stopTrader) {
         try {
-            await fetchJson(`/api/users/${encodeURIComponent(username)}`, {
+            await fetchJson(buildApiUrl(`users/${encodeURIComponent(username)}`), {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json'
@@ -335,38 +332,12 @@ export function initManagementPage() {
         }
 
         try {
-            const result = await fetchJson('/api/exchanges');
+            const result = await fetchJson(buildApiUrl('exchanges'));
             cachedExchanges = Array.isArray(result.exchanges) ? result.exchanges : [];
             renderExchangeList(cachedExchanges);
         } catch (error) {
             exchangeList.innerHTML = `<div class="empty">Erro ao carregar corretoras: ${escapeHtml(error.message)}</div>`;
             renderExchangeSummary([]);
-        }
-    }
-
-    async function syncExchangesFromEnvSource() {
-        if (!btnSyncExchangeEnv || !exchangeSyncFeedback) {
-            return;
-        }
-
-        btnSyncExchangeEnv.disabled = true;
-        exchangeSyncFeedback.textContent = 'Sincronizando exchanges a partir do .env...';
-        exchangeSyncFeedback.classList.remove('success');
-
-        try {
-            const result = await fetchJson('/api/exchanges/sync-env', {
-                method: 'POST'
-            });
-
-            const summary = result.summary || { created: 0, updated: 0, skipped: 0 };
-            exchangeSyncFeedback.textContent = `Sincronização concluída. ${summary.created} criada(s), ${summary.updated} atualizada(s), ${summary.skipped} sem alteração.`;
-            exchangeSyncFeedback.classList.add('success');
-            await loadExchanges();
-        } catch (error) {
-            exchangeSyncFeedback.textContent = `Erro ao sincronizar .env: ${error.message}`;
-            exchangeSyncFeedback.classList.remove('success');
-        } finally {
-            btnSyncExchangeEnv.disabled = false;
         }
     }
 
@@ -450,7 +421,10 @@ export function initManagementPage() {
         exchangeFormSubmit.disabled = true;
 
         try {
-            await fetchJson(editingExchangeId ? `/api/exchanges/${encodeURIComponent(editingExchangeId)}` : '/api/exchanges', {
+            const url = editingExchangeId 
+                ? buildApiUrl(`exchanges/${encodeURIComponent(editingExchangeId)}`)
+                : buildApiUrl('exchanges');
+            await fetchJson(url, {
                 method: editingExchangeId ? 'PUT' : 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -474,7 +448,7 @@ export function initManagementPage() {
     }
 
     async function toggleExchangeStatus(exchangeId) {
-        await fetchJson(`/api/exchanges/${encodeURIComponent(exchangeId)}/toggle`, {
+        await fetchJson(buildApiUrl(`exchanges/${encodeURIComponent(exchangeId)}/toggle`), {
             method: 'PATCH'
         });
 
@@ -482,7 +456,7 @@ export function initManagementPage() {
     }
 
     async function deleteExchangeRecord(exchangeId) {
-        await fetchJson(`/api/exchanges/${encodeURIComponent(exchangeId)}`, {
+        await fetchJson(buildApiUrl(`exchanges/${encodeURIComponent(exchangeId)}`), {
             method: 'DELETE'
         });
 
@@ -536,7 +510,7 @@ export function initManagementPage() {
             userFormFeedback.classList.remove('success');
 
             try {
-                await fetchJson('/api/users', {
+                await fetchJson(buildApiUrl('users'), {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -566,12 +540,6 @@ export function initManagementPage() {
             }
 
             hideExchangeForm();
-        });
-    }
-
-    if (btnSyncExchangeEnv) {
-        btnSyncExchangeEnv.addEventListener('click', () => {
-            syncExchangesFromEnvSource();
         });
     }
 

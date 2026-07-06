@@ -9,7 +9,6 @@ const {
 } = require('../database');
 const Exchange = require('../models/Exchange');
 const { getExchangeCredentialConfig, SUPPORTED_EXCHANGES } = require('../exchange-credentials');
-const { resolveMarketMakingConfig } = require('../exchange-config');
 
 async function listExchanges({ response }) {
     try {
@@ -235,54 +234,9 @@ async function getExchangeStatusesHandler({ response }) {
     }
 }
 
-async function syncExchangesFromEnvHandler({ response }) {
-    try {
-        const supportedExchanges = ['binance', 'kraken', 'bybit', 'mexc', 'coinbase', 'gateio', 'okx', 'woo'];
-        const summary = { updated: 0, skipped: 0, not_found: 0, errors: 0 };
-
-        for (const exchangeId of supportedExchanges) {
-            try {
-                const envConfig = await resolveMarketMakingConfig(exchangeId).catch(() => null);
-                if (!envConfig || !envConfig.symbols || envConfig.symbols.length === 0) {
-                    continue;
-                }
-
-                const symbolsString = envConfig.symbols.join(',');
-                const exchangeDefinition = getExchangeCredentialConfig(exchangeId);
-                const acronym = exchangeDefinition.acronym;
-
-                const existingExchange = await Exchange.findOne({ acronym });
-
-                if (existingExchange) {
-                    const currentSymbols = existingExchange.marketMakingConfig?.symbol || '';
-                    if (currentSymbols !== symbolsString) {
-                        const newConfig = { ...(existingExchange.toObject().marketMakingConfig || {}), symbol: symbolsString };
-                        await updateExchange(existingExchange._id, { marketMakingConfig: newConfig });
-                        summary.updated++;
-                    } else {
-                        summary.skipped++;
-                    }
-                } else {
-                    summary.not_found++;
-                }
-            } catch (error) {
-                console.error(`[sync-env] Error syncing MM symbols for ${exchangeId}: ${error.message}`);
-                summary.errors++;
-            }
-        }
-        
-        const message = `Sincronização de símbolos de Market Making do .env concluída. ${summary.updated} atualizada(s), ${summary.skipped} sem alteração, ${summary.not_found} não encontrada(s) no DB.`;
-        sendJson(response, 200, { summary, message });
-    } catch (error) {
-        sendJson(response, 500, { error: error.message });
-    }
-}
-
 function registerExchangeRoutes(router) {
     router.register('GET', '/api/exchanges', listExchanges);
     router.register('GET', '/api/exchanges/statuses', getExchangeStatusesHandler);
-    router.register('GET', '/api/exchanges/sync-env', syncExchangesFromEnvHandler);
-    router.register('POST', '/api/exchanges/sync-env', syncExchangesFromEnvHandler);
     router.register('GET', '/api/exchanges/:id', getExchangeById);
     router.register('POST', '/api/exchanges', createExchangeHandler);
     router.register('PUT', '/api/exchanges/:id', updateExchangeHandler);
