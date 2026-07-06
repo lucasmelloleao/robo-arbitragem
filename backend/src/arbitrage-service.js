@@ -403,7 +403,22 @@ async function createArbitrageService(exchangeId) {
         }
 
         if (monitoredTriangles.length === 0) {
-            throw new Error('Nenhum triângulo válido encontrado para os ativos configurados nesta exchange.');
+            const configuredPairs = [];
+            for (const startAsset of config.startAssets) {
+                for (const bridgeAsset of config.bridgeAssets) {
+                    if (bridgeAsset === startAsset) continue;
+                    for (const targetAsset of config.targetAssets) {
+                        if (targetAsset === startAsset || targetAsset === bridgeAsset) continue;
+                        const triangle = buildTriangle(startAsset, bridgeAsset, targetAsset);
+                        configuredPairs.push(triangle.label);
+                    }
+                }
+            }
+            throw new Error(
+                `Nenhum triângulo válido encontrado para os ativos configurados nesta exchange. `
+                + `Start: [${config.startAssets.join(', ')}], Bridge: [${config.bridgeAssets.join(', ')}], Target: [${config.targetAssets.join(', ')}]. `
+                + `Pares esperados: ${configuredPairs.join(', ')}.`
+            );
         }
     }
 
