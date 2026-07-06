@@ -3,13 +3,13 @@ const http = require('http');
 const path = require('path');
 const { WebSocketServer } = require('ws');
 
-const { createArbitrageService } = require('./arbitrage-service');
-const { createMarketMakingService } = require('./market-making-service');
-const { connect: connectDatabase } = require('./database');
-const { sendJson, sendNoContent } = require('./http-utils');
-const { normalizeExchangeId: normalizeSupportedExchangeId } = require('./exchange-credentials');
-const { createApiRouter } = require('./routes');
-const { createWebSocketHandlers } = require('./ws/handlers');
+const { createArbitrageService } = require('./src/arbitrage-service');
+const { createMarketMakingService } = require('./src/market-making-service');
+const { connect: connectDatabase } = require('./src/database');
+const { sendJson, sendNoContent } = require('./src/http-utils');
+const { normalizeExchangeId: normalizeSupportedExchangeId } = require('./src/exchange-credentials');
+const { createApiRouter } = require('./src/routes');
+const { createWebSocketHandlers } = require('./src/ws/handlers');
 
 function getContentType(filePath) {
     const extension = path.extname(filePath).toLowerCase();
@@ -423,14 +423,25 @@ function createAppServer() {
     }
 
     const server = http.createServer(async (request, response) => {
-        try {
-            const requestUrl = new URL(request.url, `http://${request.headers.host}`);
-            const { relativePath } = parseExchangePath(requestUrl.pathname);
+        const requestUrl = new URL(request.url, `http://${request.headers.host}`);
 
-            if (request.method === 'OPTIONS') {
-                sendNoContent(response);
-                return;
-            }
+        if (request.method === 'OPTIONS') {
+            response.writeHead(204, {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+                'Access-Control-Max-Age': '86400'
+            });
+            response.end();
+            return;
+        }
+
+        response.setHeader('Access-Control-Allow-Origin', '*');
+        response.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+        response.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+        try {
+            const { relativePath } = parseExchangePath(requestUrl.pathname);
 
             if (await apiRouter.handle(request, response, requestUrl)) {
                 return;

@@ -1,4 +1,5 @@
 import {
+    buildApiUrl,
     exchangeUsesPassphrase,
     escapeHtml,
     fetchJson,
@@ -213,7 +214,7 @@ export function initManagementPage() {
         }
 
         try {
-            const result = await fetchJson('/api/users');
+            const result = await fetchJson(buildApiUrl('users'));
             renderUserList(Array.isArray(result.users) ? result.users : []);
         } catch (error) {
             userList.innerHTML = `<div class="empty">Erro ao carregar usuários: ${escapeHtml(error.message)}</div>`;

@@ -155,6 +155,7 @@
             text-align: center;
         }
     </style>
+    <script src="/js/config.js"></script>
 </head>
 <body>
     <section class="hero">
@@ -289,7 +290,9 @@
 
                 try {
                     const isEdit = !!userIdInput?.value;
-                    const url = isEdit ? `/api/users/${encodeURIComponent(userIdInput.value)}` : '/api/users';
+                    const baseUrl = window.API_URL || '';
+                    const path = isEdit ? `users/${encodeURIComponent(userIdInput.value)}` : 'users';
+                    const url = baseUrl ? `${baseUrl}/api/${path}` : `/api/${path}`;
                     const method = isEdit ? 'PUT' : 'POST';
 
                     const response = await fetch(url, {
@@ -329,7 +332,8 @@
             if (!userList) return;
 
             try {
-                const response = await fetch('/api/users');
+                const baseUrl = window.API_URL || '';
+                const response = await fetch(`${baseUrl}/api/users`);
                 const result = await response.json();
 
                 if (!response.ok) {
@@ -378,7 +382,8 @@
 
         async function editUser(username) {
             try {
-                const response = await fetch(`/api/users/${encodeURIComponent(username)}`);
+                const baseUrl = window.API_URL || '';
+                const response = await fetch(`${baseUrl}/api/users/${encodeURIComponent(username)}`);
                 const result = await response.json();
 
                 if (!response.ok) {
@@ -406,7 +411,8 @@
 
         async function toggleUserStatus(username, newStatus) {
             try {
-                const response = await fetch(`/api/users/${encodeURIComponent(username)}`, {
+                const baseUrl = window.API_URL || '';
+                const response = await fetch(`${baseUrl}/api/users/${encodeURIComponent(username)}`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json'
@@ -432,7 +438,8 @@
             if (!confirmed) return;
 
             try {
-                const response = await fetch(`/api/users/${encodeURIComponent(username)}`, {
+                const baseUrl = window.API_URL || '';
+                const response = await fetch(`${baseUrl}/api/users/${encodeURIComponent(username)}`, {
                     method: 'DELETE'
                 });
 

@@ -14,7 +14,8 @@ const EXCHANGE_ACRONYM_MAP = {
 
 async function loadActiveExchangeStatuses() {
     try {
-        const result = await fetch('/api/exchanges/statuses');
+        const baseUrl = window.API_URL || '';
+        const result = await fetch(`${baseUrl}/api/exchanges/statuses`);
         const data = await result.json();
         return data.statuses || {};
     } catch {
@@ -178,4 +179,10 @@ export function formatEstimatedOutcome(outcome, currency = 'quote') {
     const toneClass = outcome.isPositive ? 'positive' : 'negative';
     const sign = outcome.isPositive ? '+' : '';
     return `<span class="${toneClass}">${sign}${formatNumber(outcome.estimatedPnL, 6)} ${currency}</span> (${sign}${formatNumber(outcome.estimatedPnLPercent, 4)}%)`;
+}
+
+export function buildApiUrl(pathname) {
+    const baseUrl = window.API_URL || '';
+    const normalized = pathname.replace(/^\//, '');
+    return baseUrl ? `${baseUrl}/api/${normalized}` : `/api/${normalized}`;
 }

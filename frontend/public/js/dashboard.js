@@ -1,4 +1,5 @@
 import {
+    buildApiUrl,
     escapeHtml,
     formatDateTime,
     formatEstimatedOutcome,
@@ -47,11 +48,7 @@ export async function initDashboardPage() {
     const activeSubscriptions = new Set();
     const activeMarketMakingSubscriptions = new Set();
     const marketMakingStatuses = new Map();
-    const pendingSocketRequests = new Map();
 
-    let socket;
-    let socketReadyPromise;
-    let socketRequestId = 0;
     let selectedMarketMakingExchangeId = null;
 
     function ensureRequiredElements() {
@@ -407,11 +404,6 @@ export async function initDashboardPage() {
         updateListenAllMarketMakingButton();
     }
 
-    function getWebSocketUrl() {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        return `${protocol}//${window.location.host}/ws`;
-    }
-
     function updateSocketStatus(state, label) {
         if (!socketStatusPill || !socketStatusLabel) {
             return;
@@ -419,6 +411,56 @@ export async function initDashboardPage() {
 
         socketStatusPill.dataset.socketState = state;
         socketStatusLabel.textContent = label;
+    }
+
+    async function backendRequest(action, exchangeId) {
+        updateSocketStatus('connecting', 'Atualizando...');
+        
+        try {
+            let url, options;
+            
+            switch (action) {
+                case 'status':
+                    url = buildApiUrl(`arbitrage/${exchangeId}/status`);
+                    break;
+                case 'scan':
+                    url = buildApiUrl(`arbitrage/${exchangeId}/scan`);
+                    break;
+                case 'market-making-status':
+                    url = buildApiUrl(`market-making/${exchangeId}/status`);
+                    break;
+                case 'market-making-run':
+                    url = buildApiUrl(`market-making/${exchangeId}/run`);
+                    break;
+                case 'subscribe':
+                    url = buildApiUrl(`arbitrage/${exchangeId}/subscribe`);
+                    break;
+                case 'unsubscribe':
+                    url = buildApiUrl(`arbitrage/${exchangeId}/unsubscribe`);
+                    break;
+                case 'market-making-subscribe':
+                    url = buildApiUrl(`market-making/${exchangeId}/subscribe`);
+                    break;
+                case 'market-making-unsubscribe':
+                    url = buildApiUrl(`market-making/${exchangeId}/unsubscribe`);
+                    break;
+                default:
+                    throw new Error(`Ação não suportada: ${action}`);
+            }
+            
+            const response = await fetch(url, { method: 'GET' });
+            const data = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(data.error || 'Falha na requisição.');
+            }
+            
+            updateSocketStatus('connected', 'Conectado');
+            return data.payload || data;
+        } catch (error) {
+            updateSocketStatus('error', 'Erro');
+            throw error;
+        }
     }
 
     function updateLastRefresh(exchangeId, timestamp, logs) {
@@ -753,157 +795,6 @@ export async function initDashboardPage() {
         updatePageStatus();
     }
 
-    function rejectPendingSocketRequests(message) {
-        for (const { reject } of pendingSocketRequests.values()) {
-            reject(new Error(message));
-        }
-
-        pendingSocketRequests.clear();
-    }
-
-    function ensureSocketConnection() {
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            updateSocketStatus('connected', 'WebSocket conectado');
-            return Promise.resolve(socket);
-        }
-
-        if (socketReadyPromise) {
-            return socketReadyPromise;
-        }
-
-        socketReadyPromise = new Promise((resolve, reject) => {
-            updateSocketStatus('connecting', 'WebSocket conectando...');
-            socket = new WebSocket(getWebSocketUrl());
-
-            socket.addEventListener('open', () => {
-                socketReadyPromise = null;
-                updateSocketStatus('connected', 'WebSocket conectado');
-                console.log(`[ws] conectado ao servidor em ${getWebSocketUrl()}`);
-                resolve(socket);
-            }, { once: true });
-
-            socket.addEventListener('message', (event) => {
-                let message;
-
-                try {
-                    message = JSON.parse(event.data);
-                } catch {
-                    return;
-                }
-
-                console.log('[ws] mensagem recebida do servidor:', message);
-
-                if (message.type === 'exchange-update') {
-                    applyExchangeStatus(
-                        message.exchangeId,
-                        message.payload,
-                        `${getExchangeTitle(message.exchangeId)} atualizada automaticamente em ${new Date().toLocaleTimeString()}.`
-                    );
-                    return;
-                }
-
-                if (message.type === 'market-making-update') {
-                    renderMarketMakingViews(
-                        message.payload,
-                        `Market making atualizado automaticamente em ${new Date().toLocaleTimeString()}.`
-                    );
-                    return;
-                }
-
-                if (message.type === 'market-making-stopped') {
-                    stopMarketMakingSubscription(message.exchangeId);
-
-                    const stopReason = message.reason === 'live-orders-created'
-                        ? 'Loop encerrado automaticamente após enviar ordens live.'
-                        : message.reason === 'favorable-opportunity-found'
-                            ? 'Loop encerrado automaticamente após encontrar oportunidade favorável.'
-                            : 'Loop de market making encerrado pelo servidor.';
-
-                    const view = exchangeViews.get(message.exchangeId);
-                    if (view) {
-                        view.feedback.textContent = stopReason;
-                    }
-
-                    if (getMarketMakingExchangeId() === message.exchangeId) {
-                        marketMakingSummary.textContent = stopReason;
-                    }
-
-                    feedback.textContent = `${getExchangeTitle(message.exchangeId)}: ${stopReason}`;
-                    return;
-                }
-
-                if (message.type === 'exchange-error') {
-                    const view = exchangeViews.get(message.exchangeId);
-
-                    if (view) {
-                        view.feedback.textContent = message.error;
-                    }
-
-                    return;
-                }
-
-                if (message.type === 'market-making-error') {
-                    marketMakingSummary.textContent = message.error;
-                    return;
-                }
-
-                if (!message.requestId) {
-                    return;
-                }
-
-                const pendingRequest = pendingSocketRequests.get(message.requestId);
-
-                if (!pendingRequest) {
-                    return;
-                }
-
-                pendingSocketRequests.delete(message.requestId);
-
-                if (!message.ok) {
-                    pendingRequest.reject(new Error(message.error || 'Falha na requisição WebSocket.'));
-                    return;
-                }
-
-                pendingRequest.resolve(message.payload);
-            });
-
-            socket.addEventListener('close', () => {
-                socket = null;
-                socketReadyPromise = null;
-                updateSocketStatus('disconnected', 'WebSocket desconectado');
-                console.log('[ws] conexão encerrada');
-                rejectPendingSocketRequests('Conexão WebSocket encerrada.');
-            });
-
-            socket.addEventListener('error', () => {
-                if (socket && socket.readyState !== WebSocket.OPEN) {
-                    socketReadyPromise = null;
-                    updateSocketStatus('error', 'Falha no WebSocket');
-                    reject(new Error('Falha ao conectar ao WebSocket do servidor.'));
-                }
-            }, { once: true });
-        });
-
-        return socketReadyPromise;
-    }
-
-    async function sendSocketRequest(action, exchangeId) {
-        const activeSocket = await ensureSocketConnection();
-        const requestId = `${Date.now()}-${socketRequestId += 1}`;
-
-        return await new Promise((resolve, reject) => {
-            pendingSocketRequests.set(requestId, { resolve, reject });
-
-            try {
-                const request = { requestId, action, exchangeId };
-                console.log('[ws] enviando mensagem para o servidor:', request);
-                activeSocket.send(JSON.stringify(request));
-            } catch {
-                pendingSocketRequests.delete(requestId);
-                reject(new Error('Falha ao enviar mensagem WebSocket.'));
-            }
-        });
-    }
 
     async function loadDashboard(exchangeId) {
         const view = exchangeViews.get(exchangeId);
@@ -912,8 +803,8 @@ export async function initDashboardPage() {
 
         try {
             const [status, marketMakingStatus] = await Promise.all([
-                sendSocketRequest('status', exchangeId),
-                sendSocketRequest('market-making-status', exchangeId).catch(() => null)
+                backendRequest('status', exchangeId),
+                backendRequest('market-making-status', exchangeId).catch(() => null)
             ]);
             applyExchangeStatus(exchangeId, status, `Painel ${getExchangeTitle(exchangeId)} atualizado.`);
 
@@ -933,8 +824,8 @@ export async function initDashboardPage() {
         view.feedback.textContent = `Executando ${getExchangeTitle(exchangeId)}...`;
 
         try {
-            const payload = await sendSocketRequest('scan', exchangeId);
-            const status = await sendSocketRequest('status', exchangeId);
+            const payload = await backendRequest('scan', exchangeId);
+            const status = await backendRequest('status', exchangeId);
             applyExchangeStatus(exchangeId, status, `Scan ${getExchangeTitle(exchangeId)} concluído às ${new Date(payload.scan.timestamp).toLocaleTimeString()}.`);
         } catch (error) {
             view.feedback.textContent = error.message;
@@ -981,7 +872,7 @@ export async function initDashboardPage() {
 
     async function loadMarketMakingStatus() {
         try {
-            const status = await sendSocketRequest('market-making-status', getMarketMakingExchangeId());
+            const status = await backendRequest('market-making-status', getMarketMakingExchangeId());
             renderMarketMakingViews(status);
         } catch (error) {
             marketMakingSummary.textContent = error.message;
@@ -995,7 +886,7 @@ export async function initDashboardPage() {
         try {
             selectedMarketMakingExchangeId = getMarketMakingExchangeId();
             updateSelectedMarketMakingExchange();
-            const payload = await sendSocketRequest('market-making-run', getMarketMakingExchangeId());
+            const payload = await backendRequest('market-making-run', getMarketMakingExchangeId());
             renderMarketMakingViews(payload.status, `Market making executado em ${formatDateTime(payload.run.timestamp)}.`);
             feedback.textContent = `Market making executado para ${getExchangeTitle(payload.run.exchange)} em ${payload.run.symbol}.`;
         } catch (error) {
@@ -1012,13 +903,13 @@ export async function initDashboardPage() {
         cancelMarketMakingOrdersButton.disabled = true;
 
         try {
-            const payload = await sendSocketRequest('market-making-cancel', exchangeId);
+            const payload = await backendRequest('market-making-cancel', exchangeId);
             renderMarketMakingViews(payload.status, payload.cancellation.message);
             feedback.textContent = `${getExchangeTitle(exchangeId)}: ${payload.cancellation.message}`;
         } catch (error) {
             marketMakingSummary.textContent = error.message;
         } finally {
-            const status = await sendSocketRequest('market-making-status', exchangeId).catch(() => null);
+            const status = await backendRequest('market-making-status', exchangeId).catch(() => null);
             updateCancelMarketMakingOrdersButton(status?.activeExecution || null);
         }
     }
@@ -1031,13 +922,13 @@ export async function initDashboardPage() {
 
         try {
             if (activeMarketMakingSubscriptions.has(exchangeId)) {
-                await sendSocketRequest('market-making-unsubscribe', exchangeId);
+                await backendRequest('market-making-unsubscribe', exchangeId);
                 stopMarketMakingSubscription(exchangeId);
                 marketMakingSummary.textContent = 'Escuta contínua de market making interrompida.';
                 return;
             }
 
-            const payload = await sendSocketRequest('market-making-subscribe', exchangeId);
+            const payload = await backendRequest('market-making-subscribe', exchangeId);
             startMarketMakingSubscription(exchangeId);
             marketMakingSummary.textContent = `Escuta de market making ativada para ${getExchangeTitle(payload.exchangeId)}. Atualização a cada ${Math.round(payload.intervalMs / 1000)} segundo(s), com ${getMarketMakingLoopDescription(payload.keepListening)}.`;
         } catch (error) {
@@ -1059,13 +950,13 @@ export async function initDashboardPage() {
 
         try {
             if (activeSubscriptions.has(exchangeId)) {
-                await sendSocketRequest('unsubscribe', exchangeId);
+                await backendRequest('unsubscribe', exchangeId);
                 stopAutoScan(exchangeId);
                 view.feedback.textContent = `Escuta contínua da ${getExchangeTitle(exchangeId)} interrompida.`;
                 return;
             }
 
-            const payload = await sendSocketRequest('subscribe', exchangeId);
+            const payload = await backendRequest('subscribe', exchangeId);
             startAutoScan(exchangeId);
             view.feedback.textContent = `Escuta contínua da ${getExchangeTitle(exchangeId)} ativada. O servidor enviará atualizações a cada ${Math.round(payload.intervalMs / 1000)} segundo(s).`;
         } catch (error) {
@@ -1089,7 +980,7 @@ export async function initDashboardPage() {
 
         try {
             if (activeMarketMakingSubscriptions.has(exchangeId)) {
-                await sendSocketRequest('market-making-unsubscribe', exchangeId);
+                await backendRequest('market-making-unsubscribe', exchangeId);
                 stopMarketMakingSubscription(exchangeId);
                 view.feedback.textContent = `Escuta de market making da ${getExchangeTitle(exchangeId)} interrompida.`;
                 if (getMarketMakingExchangeId() === exchangeId) {
@@ -1098,7 +989,7 @@ export async function initDashboardPage() {
                 return;
             }
 
-            const payload = await sendSocketRequest('market-making-subscribe', exchangeId);
+            const payload = await backendRequest('market-making-subscribe', exchangeId);
             startMarketMakingSubscription(exchangeId);
             view.feedback.textContent = `Escuta de market making da ${getExchangeTitle(exchangeId)} ativada. Atualização a cada ${Math.round(payload.intervalMs / 1000)} segundo(s), com ${getMarketMakingLoopDescription(payload.keepListening)}.`;
             if (getMarketMakingExchangeId() === exchangeId) {
@@ -1123,14 +1014,14 @@ export async function initDashboardPage() {
 
         try {
             if (allSubscribed) {
-                await Promise.all(visibleExchanges.map((exchangeId) => sendSocketRequest('unsubscribe', exchangeId)));
+                await Promise.all(visibleExchanges.map((exchangeId) => backendRequest('unsubscribe', exchangeId)));
                 visibleExchanges.forEach(stopAutoScan);
                 feedback.textContent = 'Escuta contínua interrompida em todas as exchanges visíveis.';
                 return;
             }
 
             const exchangeIdsToSubscribe = visibleExchanges.filter((exchangeId) => !activeSubscriptions.has(exchangeId));
-            const results = await Promise.all(exchangeIdsToSubscribe.map((exchangeId) => sendSocketRequest('subscribe', exchangeId)));
+            const results = await Promise.all(exchangeIdsToSubscribe.map((exchangeId) => backendRequest('subscribe', exchangeId)));
             exchangeIdsToSubscribe.forEach(startAutoScan);
 
             const intervals = [...new Set(results.map((item) => Math.round(item.intervalMs / 1000)))];
@@ -1152,7 +1043,7 @@ export async function initDashboardPage() {
 
         try {
             if (allSubscribed) {
-                await Promise.all(visibleExchanges.map((exchangeId) => sendSocketRequest('market-making-unsubscribe', exchangeId)));
+                await Promise.all(visibleExchanges.map((exchangeId) => backendRequest('market-making-unsubscribe', exchangeId)));
                 visibleExchanges.forEach(stopMarketMakingSubscription);
                 marketMakingSummary.textContent = 'Escuta contínua de market making interrompida em todas as exchanges visíveis.';
                 feedback.textContent = 'Escuta de market making interrompida em todas as exchanges visíveis.';
@@ -1160,7 +1051,7 @@ export async function initDashboardPage() {
             }
 
             const exchangeIdsToSubscribe = visibleExchanges.filter((exchangeId) => !activeMarketMakingSubscriptions.has(exchangeId));
-            const results = await Promise.all(exchangeIdsToSubscribe.map((exchangeId) => sendSocketRequest('market-making-subscribe', exchangeId)));
+            const results = await Promise.all(exchangeIdsToSubscribe.map((exchangeId) => backendRequest('market-making-subscribe', exchangeId)));
             exchangeIdsToSubscribe.forEach(startMarketMakingSubscription);
 
             const intervals = [...new Set(results.map((item) => Math.round(item.intervalMs / 1000)))];
@@ -1186,7 +1077,7 @@ export async function initDashboardPage() {
             renderMarketMakingStatus(cachedStatus, `Detalhamento de market making focado em ${getExchangeTitle(exchangeId)}.`);
         }
 
-        const latestStatus = await sendSocketRequest('market-making-status', exchangeId);
+        const latestStatus = await backendRequest('market-making-status', exchangeId);
         renderMarketMakingViews(latestStatus);
     }
 
@@ -1222,24 +1113,6 @@ export async function initDashboardPage() {
     if (refreshAllButton) {
         refreshAllButton.addEventListener('click', refreshAllDashboards);
     }
-
-    window.addEventListener('beforeunload', () => {
-        for (const exchangeId of activeSubscriptions.keys()) {
-            sendSocketRequest('unsubscribe', exchangeId).catch(() => {
-                // Ignore unload-time unsubscribe failures.
-            });
-        }
-
-        for (const exchangeId of activeMarketMakingSubscriptions.keys()) {
-            sendSocketRequest('market-making-unsubscribe', exchangeId).catch(() => {
-                // Ignore unload-time unsubscribe failures.
-            });
-        }
-
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.close();
-        }
-    });
 
     const visibleExchanges = getVisibleExchanges();
 

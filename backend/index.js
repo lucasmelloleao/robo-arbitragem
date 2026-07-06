@@ -1,6 +1,6 @@
 require('dotenv').config();
 
-const { createAppServer } = require('./src/server');
+const { createAppServer } = require('./server');
 
 const port = Number(process.env.PORT) || 3000;
 const server = createAppServer();

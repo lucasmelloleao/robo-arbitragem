@@ -115,9 +115,13 @@ async function createExchange(exchangeId, config) {
             apiKey: credentials.apiKey,
             secret: credentials.secret,
             enableRateLimit: true,
+           
             ...timeoutSettings,
             options: {
                 defaultType: 'spot',
+                 adjustForTimeDifference: true,
+                'recvWindow': 60000,
+
                 fetchCurrencies: false
             }
         });
