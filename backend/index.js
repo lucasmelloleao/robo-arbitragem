@@ -9,16 +9,17 @@ server.listen(port, () => {
     console.log(`Frontend disponível em http://localhost:${port}`);
     console.log(`Modo atual: ${process.env.ARBITRAGE_ENABLE_LIVE_TRADING === 'true' ? 'live' : 'simulation'}`);
 
-    /*   const exchanges = ['binance', 'kraken', 'bybit', 'mexc', 'coinbase', 'gateio', 'okx', 'woo'];
+    //const exchanges = ['binance', 'kraken', 'bybit', 'mexc', 'coinbase', 'gateio', 'okx', 'woo'];
+    const exchanges = [ 'mexc'];
 
     exchanges.forEach((exchangeId) => {
-        server.startBackgroundMarketMaking(exchangeId)
-            .then(({ intervalMs, symbol, keepListening }) => {
-                console.log(`[market-making] ${exchangeId.toUpperCase()} iniciado automaticamente no backend para ${symbol} a cada ${intervalMs}ms (${keepListening ? 'loop contínuo' : 'parada automática'}).`);
+        server.startBackgroundArbitrage(exchangeId)
+            .then(({ intervalMs, scanCount, maxScans }) => {
+                const limitInfo = maxScans > 0 ? ` (limite de ${maxScans} scan(s))` : '';
+                console.log(`[arbitrage] ${exchangeId.toUpperCase()} iniciado automaticamente no backend a cada ${intervalMs}ms${limitInfo}.`);
             })
             .catch((error) => {
-                console.error(`[market-making] falha ao iniciar automaticamente ${exchangeId.toUpperCase()}: ${error.message}`);
+                console.error(`[arbitrage] falha ao iniciar automaticamente ${exchangeId.toUpperCase()}: ${error.message}`);
             });
     });
-    */
 });

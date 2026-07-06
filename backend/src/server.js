@@ -48,6 +48,7 @@ function createAppServer() {
     const socketSubscriptions = new Map();
     const socketMarketMakingSubscriptions = new Map();
     const backgroundMarketMakingSubscriptions = new Map();
+    const backgroundArbitrageSubscriptions = new Map();
 
     connectDatabase().catch((error) => {
         console.error('[server] Falha ao conectar ao MongoDB na inicialização:', error.message);
@@ -110,7 +111,12 @@ function createAppServer() {
         const service = await getService(exchangeId);
         await service.scan();
         const status = await service.getStatus();
-        sendSocketMessage(socket, { type: 'exchange-update', exchangeId, payload: status });
+
+        if (socket) {
+            sendSocketMessage(socket, { type: 'exchange-update', exchangeId, payload: status });
+        }
+
+        return status;
     }
 
     async function pushMarketMakingUpdate(socket, exchangeId) {
@@ -506,7 +512,71 @@ function createAppServer() {
         });
     });
 
+    async function startBackgroundArbitrage(exchangeId) {
+        const resolvedExchangeId = exchangeId || 'binance';
+
+        if (backgroundArbitrageSubscriptions.has(resolvedExchangeId)) {
+            const currentSubscription = backgroundArbitrageSubscriptions.get(resolvedExchangeId);
+            return {
+                exchangeId: resolvedExchangeId,
+                subscribed: true,
+                intervalMs: currentSubscription.intervalMs,
+                scanCount: currentSubscription.scanCount,
+                maxScans: currentSubscription.maxScans
+            };
+        }
+
+        const service = await getService(resolvedExchangeId);
+        const config = service.getConfig();
+        const subscription = {
+            intervalMs: config.scanIntervalMs,
+            maxScans: Number(process.env.ARBITRAGE_BACKGROUND_MAX_SCANS) || 0,
+            scanCount: 0,
+            intervalId: null,
+            running: false
+        };
+
+        const runSubscriptionCycle = async () => {
+            if (subscription.running) {
+                return;
+            }
+
+            subscription.running = true;
+
+            try {
+                await pushExchangeUpdate(null, resolvedExchangeId);
+                subscription.scanCount += 1;
+
+                if (subscription.maxScans > 0 && subscription.scanCount >= subscription.maxScans) {
+                    clearInterval(subscription.intervalId);
+                    backgroundArbitrageSubscriptions.delete(resolvedExchangeId);
+                    console.log(`[arbitrage] loop em background encerrado para ${resolvedExchangeId} apos ${subscription.scanCount} scan(s) (limite configurado).`);
+                }
+            } catch (error) {
+                console.error(`[arbitrage] falha no loop em background para ${resolvedExchangeId}: ${error.message}`);
+            } finally {
+                subscription.running = false;
+            }
+        };
+
+        subscription.intervalId = setInterval(() => {
+            runSubscriptionCycle();
+        }, subscription.intervalMs);
+
+        backgroundArbitrageSubscriptions.set(resolvedExchangeId, subscription);
+        await runSubscriptionCycle();
+
+        return {
+            exchangeId: resolvedExchangeId,
+            subscribed: true,
+            intervalMs: subscription.intervalMs,
+            scanCount: subscription.scanCount,
+            maxScans: subscription.maxScans
+        };
+    }
+
     server.startBackgroundMarketMaking = startBackgroundMarketMaking;
+    server.startBackgroundArbitrage = startBackgroundArbitrage;
 
     return server;
 }

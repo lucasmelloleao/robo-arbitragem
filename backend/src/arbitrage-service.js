@@ -507,6 +507,9 @@ async function createArbitrageService(exchangeId) {
             const loggedAt = new Date().toISOString();
 
             for (const triangle of selectedTriangles) {
+                
+              //  console.log(`[arbitrage] Avaliando triângulo: ${triangle.label}`);
+
                 const evaluation = createEvaluation(triangle);
                 evaluations.push(evaluation);
                 const orderBook1 = orderBooks.get(triangle.pair1);
@@ -705,6 +708,7 @@ async function createArbitrageService(exchangeId) {
             results.sort((left, right) => right.percentage - left.percentage);
             const opportunities = results.filter((result) => result.percentage >= config.minProfitPercent);
 
+            console.log((`[arbitrage] Varredura concluída em ${loggedAt}. Triângulos avaliados: ${selectedTriangles.length}, oportunidades encontradas: ${opportunities.length}, descartados por spread: ${skippedBySpread}, descartados por volume/slippage: ${skippedByVolume}.`));
             if (opportunities.length > 0) {
                 await appendOpportunityLog({
                     timestamp: loggedAt,
@@ -767,6 +771,7 @@ async function createArbitrageService(exchangeId) {
             rememberScan(scanResult);
 
             if (opportunities.length > 0 && config.enableLiveTrading) {
+                console.log (`[arbitrage] Executando trade para a melhor oportunidade: ${opportunities[0].triangle.label} com lucro estimado de ${opportunities[0].percentage.toFixed(4)}%`);
                 await executeTrade(results[0]);
             }
 
