@@ -413,7 +413,7 @@ async function createArbitrageService(exchangeId) {
             for (const startAsset of config.startAssets) {
                 // Busca todos os pares onde o startAsset é a moeda de cotação (ex: */USDT)
                 const quotePairs = Object.values(markets).filter(
-                    (m) => m && m.active && m.quote === startAsset
+                    (m) => m && m.active !== false && m.quote === startAsset
                 );
                 const allBaseAssets = quotePairs
                     .map((m) => m.base)
@@ -628,7 +628,7 @@ async function createArbitrageService(exchangeId) {
                 // Avança para o próximo lote (5 pares) no próximo scan
                 allModeChunkCursor = (allModeChunkCursor + 1) % allModeTargetChunks.length;
 
-                console.log(`[arbitrage] Modo "all": executando lote ${allModeChunkCursor}/${allModeTargetChunks.length} (${chunk.length} pares -> ${selectedTriangles.length} triângulos) em ${configuredExchangeId}.`);
+                //console.log(`[arbitrage] Modo "all": executando lote ${allModeChunkCursor}/${allModeTargetChunks.length} (${chunk.length} pares -> ${selectedTriangles.length} triângulos) em ${configuredExchangeId}.`);
 
                 uniquePairs = [...new Set(selectedTriangles.flatMap((triangle) => [triangle.pair1, triangle.pair2, triangle.pair3]))];
             } else {
@@ -874,7 +874,7 @@ async function createArbitrageService(exchangeId) {
 
             results.sort((left, right) => right.percentage - left.percentage);
             const opportunities = results.filter((result) => result.percentage >= config.minProfitPercent);
-            console.log(`[arbitrage] Varredura em ${loggedAt}. Triângulos: ${selectedTriangles.length}, oportunidades: ${opportunities.length}, descartados (spread: ${skippedBySpread}, volume: ${skippedByVolume}, oversold: ${skippedByOversold}).`);
+            console.log(`${loggedAt}  Pares: ${allModeChunkCursor}/${allModeTargetChunks.length}  Triângulos: ${selectedTriangles.length}, oportunidades: ${opportunities.length}, descartados (spread: ${skippedBySpread}, volume: ${skippedByVolume}, oversold: ${skippedByOversold}).`);
             if (opportunities.length > 0) {
                 await appendOpportunityLog({
                     timestamp: loggedAt,
