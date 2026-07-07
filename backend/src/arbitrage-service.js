@@ -462,13 +462,59 @@ async function createArbitrageService(exchangeId) {
         validateExecutionPlan(result);
         await validateBalances(triangle);
 
+        // ─── PERNA 1: Comprar bridgeAsset com startAsset ───────────────────────
         const order1 = await exchange.createMarketBuyOrder(triangle.pair1, amountBridge);
         await assertOrderFilled(order1, triangle.pair1);
 
+        // ─── PERNA 2: Comprar targetAsset com bridgeAsset ──────────────────────
         const order2 = await exchange.createMarketBuyOrder(triangle.pair2, amountTarget);
         await assertOrderFilled(order2, triangle.pair2);
 
-        const order3 = await exchange.createMarketSellOrder(triangle.pair3, amountTarget);
+        // ─── PERNA 3: Vender targetAsset para recuperar startAsset ────────────
+        // CRÍTICO: Não usar o valor teórico (amountTarget)!
+        // A exchange pode ter executado uma quantidade ligeiramente diferente
+        // na perna 2 (ex: pediu 4.05, executou 4.04) devido a:
+        //   - Arredondamento de Lot Size (step size)
+        //   - Taxas de trading embutidas no preenchimento
+        //   - Profundidade insuficiente no book
+        //
+        // Se tentarmos vender o valor teórico (4.05) mas só temos 4.04,
+        // a MEXC retorna erro "Oversold" (code 30005).
+        //
+        // SOLUÇÃO: Buscar o saldo REAL do targetAsset na carteira após a perna 2
+        // e usar esse valor exato na ordem de venda.
+        const balanceAfterPerna2 = await exchange.fetchBalance();
+        const realTargetBalance = balanceAfterPerna2?.free?.[triangle.targetAsset] ?? 0;
+
+        if (realTargetBalance <= 0) {
+            throw new Error(
+                `Saldo zero de ${triangle.targetAsset} apos perna 2. `
+                + `Nao e possivel executar a perna 3 (venda). `
+                + `Teorico: ${amountTarget}, Real: ${realTargetBalance}`
+            );
+        }
+
+        // Usa o saldo real, respeitando a precisão do mercado
+        const sellAmount = Number(exchange.amountToPrecision(triangle.pair3, realTargetBalance));
+
+        if (sellAmount <= 0) {
+            throw new Error(
+                `Quantidade de venda invalida apos arredondamento para ${triangle.pair3}. `
+                + `Saldo real: ${realTargetBalance}, arredondado: ${sellAmount}`
+            );
+        }
+
+        if (sellAmount < amountTarget) {
+            console.warn(`[arbitrage] Ajustando quantidade da perna 3 por diferenca de execucao:`, {
+                pair: triangle.pair3,
+                teorico: amountTarget,
+                saldoReal: realTargetBalance,
+                sellAmount,
+                diferenca: amountTarget - sellAmount
+            });
+        }
+
+        const order3 = await exchange.createMarketSellOrder(triangle.pair3, sellAmount);
         await assertOrderFilled(order3, triangle.pair3);
     }
 
