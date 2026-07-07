@@ -220,6 +220,17 @@
                                 <label for="exchange-notes">Observacoes</label>
                                 <textarea id="exchange-notes" name="notes" rows="3" placeholder="Anotacoes operacionais, ambiente, observacoes de uso..."></textarea>
                             </div>
+                            <div class="form-group form-group-wide">
+                                <label for="exchange-assets-mode">Modo de Ativos (Lista / Todos)</label>
+                                <select id="exchange-assets-mode" name="assetsMode">
+                                    <option value="list">Lista - usar apenas ativos configurados</option>
+                                    <option value="all">Todos - monitorar todos os pares disponíveis</option>
+                                </select>
+                                <small style="color: var(--text-dim); display: block; margin-top: 4px;">
+                                    "Lista" usa somente os ativos configurados em Arbitrage e Market Making.
+                                    "Todos" monitora todos os pares da corretora (ignora a lista configurada).
+                                </small>
+                            </div>
                             <label class="toggle-field" for="exchange-active">
                                 <input type="checkbox" id="exchange-active" name="active" checked>
                                 <span>Corretora ativa para operacao</span>

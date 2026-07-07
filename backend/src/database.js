@@ -176,7 +176,15 @@ async function getAllUsers() {
 async function getAllExchanges() {
     assertDatabaseAvailable();
     const exchanges = await Exchange.find({}).select('+secretKey +password').sort({ acronym: 1 }).lean();
-    return exchanges.map(sanitizeExchange);
+    const sanitized = exchanges.map(sanitizeExchange);
+    // Garante que a MEXC apareça primeiro na lista
+    sanitized.sort((a, b) => {
+        const aIsMexc = a.acronym === 'MEXC' ? 0 : 1;
+        const bIsMexc = b.acronym === 'MEXC' ? 0 : 1;
+        if (aIsMexc !== bIsMexc) return aIsMexc - bIsMexc;
+        return a.acronym.localeCompare(b.acronym);
+    });
+    return sanitized;
 }
 
 async function getExchangeByAcronym(acronym) {

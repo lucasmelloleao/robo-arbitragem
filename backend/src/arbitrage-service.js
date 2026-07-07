@@ -118,13 +118,11 @@ async function createExchange(exchangeId, config) {
             apiKey: credentials.apiKey,
             secret: credentials.secret,
             enableRateLimit: true,
-           
             ...timeoutSettings,
             options: {
                 defaultType: 'spot',
-                 adjustForTimeDifference: true,
+                adjustForTimeDifference: true,
                 'recvWindow': 60000,
-
                 fetchCurrencies: false
             }
         });
@@ -203,6 +201,10 @@ async function createArbitrageService(exchangeId) {
     let latestScanResult = null;
     const recentScans = [];
 
+    // Estado para o modo "all": lista de lotes (chunks) de 5 moedas e cursor de execução
+    let allModeTargetChunks = [];
+    let allModeChunkCursor = 0;
+
     function getMarket(symbol) {
         return exchange.market(symbol);
     }
@@ -278,14 +280,27 @@ async function createArbitrageService(exchangeId) {
     }
 
     async function validateBalances(triangle) {
-        const balance = await exchange.fetchBalance();
-        const freeAmount = balance?.free?.[triangle.startAsset] ?? 0;
+        // Tenta validar saldo, mas ignora erros 403 (Forbidden) que algumas exchanges
+        // como MEXC retornam quando a API Key nao tem permissao para endpoint de saldo.
+        try {
+            const balance = await exchange.fetchBalance();
+            const freeAmount = balance?.free?.[triangle.startAsset] ?? 0;
 
-        if (freeAmount < config.investmentAmount) {
-            throw new Error(`Saldo insuficiente em ${triangle.startAsset}. Livre: ${freeAmount}, necessário: ${config.investmentAmount}`);
+            if (freeAmount < config.investmentAmount) {
+                throw new Error(`Saldo insuficiente em ${triangle.startAsset}. Livre: ${freeAmount}, necessário: ${config.investmentAmount}`);
+            }
+
+            return balance;
+        } catch (balanceError) {
+            const isForbidden = balanceError?.code === 403
+                || balanceError?.statusCode === 403
+                || /403|forbidden|access.denied|capital\.config\/getall/i.test(String(balanceError?.message || ''));
+            if (isForbidden) {
+                console.warn(`[arbitrage] Aviso: nao foi possivel consultar saldo em ${configuredExchangeId} (acesso negado). Prosseguindo sem validacao.`);
+                return null;
+            }
+            throw balanceError;
         }
-
-        return balance;
     }
 
     function validateTradeSizes(triangle, amountBridge, amountTarget) {
@@ -385,23 +400,68 @@ async function createArbitrageService(exchangeId) {
 
     async function loadTriangles() {
         const markets = await exchange.loadMarkets();
-        const availablePairs = new Set(Object.keys(markets));
-
         monitoredTriangles = [];
 
-        for (const startAsset of config.startAssets) {
-            for (const bridgeAsset of config.bridgeAssets) {
-                if (bridgeAsset === startAsset) {
+        // ─── MODO "all": busca todos os pares que se entrelaçam com o startAsset ───
+        if (config.assetsMode === 'all') {
+            console.log(`[arbitrage] Modo "all" ativado para ${configuredExchangeId}. Buscando todos os pares que se entrelaçam com ${config.startAssets.join(', ')}...`);
+
+            const CHUNK_SIZE = 5;
+            allModeTargetChunks = [];
+            const allItems = [];
+
+            for (const startAsset of config.startAssets) {
+                // Busca todos os pares onde o startAsset é a moeda de cotação (ex: */USDT)
+                const quotePairs = Object.values(markets).filter(
+                    (m) => m && m.active && m.quote === startAsset
+                );
+                const allBaseAssets = quotePairs
+                    .map((m) => m.base)
+                    .filter((asset) => asset !== startAsset && !config.startAssets.includes(asset));
+
+                if (allBaseAssets.length === 0) {
+                    console.warn(`[arbitrage] Nenhum par com ${startAsset} encontrado no modo "all" para ${configuredExchangeId}.`);
                     continue;
                 }
 
+                console.log(`[arbitrage] Modo "all": ${allBaseAssets.length} moedas encontradas para ${startAsset} em ${configuredExchangeId}.`);
+
+                // Cada item representa um par descoberto (startAsset + targetAsset)
+                for (const targetAsset of allBaseAssets) {
+                    if (targetAsset === startAsset) continue;
+                    allItems.push({ startAsset, targetAsset });
+                }
+            }
+
+            if (allItems.length === 0) {
+                throw new Error(
+                    `Modo "all" ativado, mas nenhum par válido foi encontrado para os start assets `
+                    + `[${config.startAssets.join(', ')}] em ${configuredExchangeId}. `
+                    + `Verifique se existem pares listados com essas moedas.`
+                );
+            }
+
+            // Separa os pares descobertos em lotes de 5 para execução da arbitragem
+            for (let index = 0; index < allItems.length; index += CHUNK_SIZE) {
+                allModeTargetChunks.push(allItems.slice(index, index + CHUNK_SIZE));
+            }
+
+            allModeChunkCursor = 0;
+            console.log(`[arbitrage] Modo "all": ${allItems.length} pares descobertos, divididos em ${allModeTargetChunks.length} lotes de até ${CHUNK_SIZE} pares para ${configuredExchangeId}.`);
+
+            // monitoredTriangles mantém o total expandido (apenas p/ status/referência)
+            monitoredTriangles = [];
+            return;
+        }
+
+        // ─── MODO "list": usa os ativos configurados manualmente (comportamento original) ───
+        const availablePairs = new Set(Object.keys(markets));
+        for (const startAsset of config.startAssets) {
+            for (const bridgeAsset of config.bridgeAssets) {
+                if (bridgeAsset === startAsset) continue;
                 for (const targetAsset of config.targetAssets) {
-                    if (targetAsset === startAsset || targetAsset === bridgeAsset) {
-                        continue;
-                    }
-
+                    if (targetAsset === startAsset || targetAsset === bridgeAsset) continue;
                     const triangle = buildTriangle(startAsset, bridgeAsset, targetAsset);
-
                     if (availablePairs.has(triangle.pair1) && availablePairs.has(triangle.pair2) && availablePairs.has(triangle.pair3)) {
                         monitoredTriangles.push(triangle);
                     }
@@ -410,21 +470,10 @@ async function createArbitrageService(exchangeId) {
         }
 
         if (monitoredTriangles.length === 0) {
-            const configuredPairs = [];
-            for (const startAsset of config.startAssets) {
-                for (const bridgeAsset of config.bridgeAssets) {
-                    if (bridgeAsset === startAsset) continue;
-                    for (const targetAsset of config.targetAssets) {
-                        if (targetAsset === startAsset || targetAsset === bridgeAsset) continue;
-                        const triangle = buildTriangle(startAsset, bridgeAsset, targetAsset);
-                        configuredPairs.push(triangle.label);
-                    }
-                }
-            }
             throw new Error(
                 `Nenhum triângulo válido encontrado para os ativos configurados nesta exchange. `
                 + `Start: [${config.startAssets.join(', ')}], Bridge: [${config.bridgeAssets.join(', ')}], Target: [${config.targetAssets.join(', ')}]. `
-                + `Pares esperados: ${configuredPairs.join(', ')}.`
+                + `Verifique a configuração ou mude o modo para 'all'.`
             );
         }
     }
@@ -547,8 +596,46 @@ async function createArbitrageService(exchangeId) {
         isChecking = true;
 
         try {
-            const selectedTriangles = getTrianglesForCycle();
-            const uniquePairs = [...new Set(selectedTriangles.flatMap((triangle) => [triangle.pair1, triangle.pair2, triangle.pair3]))];
+            let selectedTriangles;
+            let uniquePairs;
+
+            // ─── MODO "all": executa um lote de até 5 pares por scan, avançando o cursor ───
+            if (config.assetsMode === 'all') {
+                if (!allModeTargetChunks || allModeTargetChunks.length === 0) {
+                    throw new Error(`Modo "all" sem lotes de pares para processar em ${configuredExchangeId}.`);
+                }
+
+                const chunk = allModeTargetChunks[allModeChunkCursor % allModeTargetChunks.length];
+                const bridgePool = config.bridgeAssets.filter((b) => !chunk.some((item) => item.startAsset === b));
+                const availableMarkets = exchange.markets || {};
+
+                selectedTriangles = [];
+                for (const { startAsset, targetAsset } of chunk) {
+                    for (const bridgeAsset of bridgePool) {
+                        if (bridgeAsset === startAsset || bridgeAsset === targetAsset) continue;
+
+                        // ─── Validação prévia: as moedas precisam formar os 3 pares no mercado ───
+                        // Inclui a verificação do par com a bridge asset antes de efetivar a varredura.
+                        const triangle = buildTriangle(startAsset, bridgeAsset, targetAsset);
+                        if (!availableMarkets[triangle.pair1] || !availableMarkets[triangle.pair2] || !availableMarkets[triangle.pair3]) {
+                            continue;
+                        }
+
+                        selectedTriangles.push(triangle);
+                    }
+                }
+
+                // Avança para o próximo lote (5 pares) no próximo scan
+                allModeChunkCursor = (allModeChunkCursor + 1) % allModeTargetChunks.length;
+
+                console.log(`[arbitrage] Modo "all": executando lote ${allModeChunkCursor}/${allModeTargetChunks.length} (${chunk.length} pares -> ${selectedTriangles.length} triângulos) em ${configuredExchangeId}.`);
+
+                uniquePairs = [...new Set(selectedTriangles.flatMap((triangle) => [triangle.pair1, triangle.pair2, triangle.pair3]))];
+            } else {
+                // ─── MODO "list": usa os triângulos monitorados normalmente ───
+                selectedTriangles = getTrianglesForCycle();
+                uniquePairs = [...new Set(selectedTriangles.flatMap((triangle) => [triangle.pair1, triangle.pair2, triangle.pair3]))];
+            }
             
             // Busca order books de forma resiliente: pares com erro Oversold são pulados
             const orderBookEntries = await Promise.all(
@@ -787,8 +874,7 @@ async function createArbitrageService(exchangeId) {
 
             results.sort((left, right) => right.percentage - left.percentage);
             const opportunities = results.filter((result) => result.percentage >= config.minProfitPercent);
-
-            console.log((`[arbitrage] Varredura concluída em ${loggedAt}. Triângulos avaliados: ${selectedTriangles.length}, oportunidades encontradas: ${opportunities.length}, descartados por spread: ${skippedBySpread}, descartados por volume/slippage: ${skippedByVolume}, descartados por Oversold MEXC: ${skippedByOversold}.`));
+            console.log(`[arbitrage] Varredura em ${loggedAt}. Triângulos: ${selectedTriangles.length}, oportunidades: ${opportunities.length}, descartados (spread: ${skippedBySpread}, volume: ${skippedByVolume}, oversold: ${skippedByOversold}).`);
             if (opportunities.length > 0) {
                 await appendOpportunityLog({
                     timestamp: loggedAt,
@@ -844,7 +930,9 @@ async function createArbitrageService(exchangeId) {
                     maxSlippagePercent: config.maxSlippagePercent,
                     scanIntervalMs: config.scanIntervalMs,
                     maxTrianglesPerCycle: config.maxTrianglesPerCycle,
-                    orderBookDepth: config.orderBookDepth
+                    orderBookDepth: config.orderBookDepth,
+                    triangleSearchMode: config.triangleSearchMode,
+                    assetsMode: config.assetsMode
                 }
             };
 
@@ -866,6 +954,14 @@ async function createArbitrageService(exchangeId) {
             mode: config.enableLiveTrading ? 'live' : 'simulation',
             exchange: configuredExchangeId,
             initialized: isInitialized,
+            assetsMode: config.assetsMode,
+            allMode: config.assetsMode === 'all'
+                ? {
+                    totalChunks: allModeTargetChunks.length,
+                    currentChunk: allModeChunkCursor,
+                    pairsPerChunk: 5
+                }
+                : null,
             monitoredTriangles: monitoredTriangles.length,
             latestScan: latestScanResult,
             recentScans,

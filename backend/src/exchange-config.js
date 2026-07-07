@@ -35,7 +35,9 @@ const ARBITRAGE_DEFAULTS = {
         minVolumeBuffer: 1.05,
         minProfitPercent: 0.1,
         maxSlippagePercent: 0.3,
-        enableLiveTrading: false
+        enableLiveTrading: false,
+        triangleSearchMode: 'LIST',
+        assetsMode: 'list'
     },
     exchanges: {
         kraken: { startAssets: ['USD'], bridgeAssets: ['BTC', 'ETH'], targetAssets: ['ETH'], investmentAmount: 100, tradingFee: 0.004, scanIntervalMs: 5000, maxTrianglesPerCycle: 6, orderBookDepth: 10, maxSpreadPercent: 0.25, minVolumeBuffer: 1.1, minProfitPercent: 0.3, maxSlippagePercent: 0.2 },
@@ -68,10 +70,12 @@ async function resolveArbitrageConfig(exchangeId) {
     const mergedDefaults = { ...baseDefaults, ...exchangeDefaults };
 
     let dbConfig = null;
+    let dbAssetsMode = null;
     try {
         const dbRecord = await getExchangeByAcronym(exchangeConfig.acronym);
         if (dbRecord) {
             dbConfig = dbRecord.arbitrageConfig || null;
+            dbAssetsMode = dbRecord.assetsMode || null;
         }
     } catch {
         // DB unavailable, fall through to .env
@@ -105,7 +109,9 @@ async function resolveArbitrageConfig(exchangeId) {
         minVolumeBuffer: Math.max(1, getSetting('minVolumeBuffer', parseNumber, mergedDefaults.minVolumeBuffer)),
         minProfitPercent: getSetting('minProfitPercent', parseNumber, mergedDefaults.minProfitPercent),
         maxSlippagePercent: Math.max(0, getSetting('maxSlippagePercent', parseNumber, mergedDefaults.maxSlippagePercent)),
-        enableLiveTrading: getSetting('enableLiveTrading', (v) => Boolean(v) === true, mergedDefaults.enableLiveTrading)
+        enableLiveTrading: getSetting('enableLiveTrading', (v) => Boolean(v) === true, mergedDefaults.enableLiveTrading),
+        triangleSearchMode: getSetting('triangleSearchMode', (v) => String(v || 'LIST').toUpperCase(), mergedDefaults.triangleSearchMode),
+        assetsMode: getSetting('assetsMode', (v) => String(v || 'list').toLowerCase(), dbAssetsMode || mergedDefaults.assetsMode || 'list')
     };
 }
 

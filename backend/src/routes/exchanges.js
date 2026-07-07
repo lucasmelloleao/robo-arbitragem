@@ -23,7 +23,7 @@ async function createExchangeHandler({ request, response }) {
     try {
         const body = await readJsonBody(request);
 
-        const { name, acronym, apiKey, secretKey, password, active, notes, arbitrageConfig, marketMakingConfig } = body;
+        const { name, acronym, apiKey, secretKey, password, active, notes, assetsMode, arbitrageConfig, marketMakingConfig } = body;
 
         if (!name || !acronym) {
             sendJson(response, 400, { 
@@ -53,6 +53,7 @@ async function createExchangeHandler({ request, response }) {
             password: typeof password === 'string' && password.trim() ? password.trim() : undefined,
             active: active ?? true,
             notes: notes || '',
+            assetsMode: assetsMode || 'list',
         };
 
         if (arbitrageConfig && typeof arbitrageConfig === 'object') {
@@ -74,6 +75,13 @@ async function updateExchangeHandler({ request, response, params, context }) {
     try {
         const { id } = params;
         const body = await readJsonBody(request);
+
+        const currentExchange = await Exchange.findById(id).lean();
+        if (!currentExchange) {
+            sendJson(response, 404, { error: 'Corretora não encontrada' });
+            return;
+        }
+
         const updates = {};
 
         if (typeof body.name === 'string' && body.name.trim()) {
@@ -108,12 +116,25 @@ async function updateExchangeHandler({ request, response, params, context }) {
             updates.active = body.active;
         }
 
+        // assetsMode deve ser sempre processado (mesmo voltando para 'list')
+        if (body.assetsMode === undefined || body.assetsMode === null || body.assetsMode === '') {
+            updates.assetsMode = 'list';
+        } else if (['list', 'all'].includes(String(body.assetsMode).toLowerCase())) {
+            updates.assetsMode = String(body.assetsMode).toLowerCase();
+        }
+
         if (body.arbitrageConfig && typeof body.arbitrageConfig === 'object') {
-            updates.arbitrageConfig = body.arbitrageConfig;
+            updates.arbitrageConfig = {
+                ...(currentExchange.arbitrageConfig || {}),
+                ...body.arbitrageConfig
+            };
         }
 
         if (body.marketMakingConfig && typeof body.marketMakingConfig === 'object') {
-            updates.marketMakingConfig = body.marketMakingConfig;
+            updates.marketMakingConfig = {
+                ...(currentExchange.marketMakingConfig || {}),
+                ...body.marketMakingConfig
+            };
         }
 
         if (Object.keys(updates).length === 0) {
@@ -134,23 +155,15 @@ async function updateExchangeHandler({ request, response, params, context }) {
         }
 
         if (context?.invalidateServiceCaches) {
-            const oldExchange = await Exchange.findById(id).lean();
-            if (oldExchange) {
-                const oldExchangeId = SUPPORTED_EXCHANGES.find(
-                    (eid) => getExchangeCredentialConfig(eid).acronym === oldExchange.acronym
-                );
-                if (oldExchangeId) {
-                    context.invalidateServiceCaches(oldExchangeId);
-                }
+            const oldExchangeId = SUPPORTED_EXCHANGES.find(
+                (eid) => getExchangeCredentialConfig(eid).acronym === currentExchange.acronym
+            );
+            if (oldExchangeId) {
+                context.invalidateServiceCaches(oldExchangeId);
             }
         }
 
         const exchange = await updateExchange(id, updates);
-
-        if (!exchange) {
-            sendJson(response, 404, { error: 'Corretora não encontrada' });
-            return;
-        }
 
         sendJson(response, 200, { exchange });
     } catch (error) {

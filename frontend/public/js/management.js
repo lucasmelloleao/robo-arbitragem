@@ -106,6 +106,9 @@ export function initManagementPage() {
             exchangeForm.elements.acronym.value = exchange.acronym || '';
             exchangeForm.elements.envInfo.value = exchange.envInfo || '';
             exchangeForm.elements.notes.value = exchange.notes || '';
+            if (exchangeForm.elements.assetsMode) {
+                exchangeForm.elements.assetsMode.value = exchange.assetsMode || 'list';
+            }
             if (exchangeForm.elements.active) {
                 exchangeForm.elements.active.checked = Boolean(exchange.active);
             }
@@ -345,6 +348,7 @@ export function initManagementPage() {
         event.preventDefault();
 
         const formData = new FormData(exchangeForm);
+        const assetsModeValue = exchangeForm.elements.assetsMode?.value || formData.get('assetsMode') || 'list';
         const payload = {
             name: formData.get('name')?.trim(),
             acronym: formData.get('acronym')?.trim().toUpperCase(),
@@ -353,8 +357,10 @@ export function initManagementPage() {
             password: formData.get('password')?.trim(),
             envInfo: formData.get('envInfo')?.trim(),
             notes: formData.get('notes')?.trim(),
+            assetsMode: assetsModeValue.trim().toLowerCase(),
             active: exchangeForm.elements.active.checked
         };
+        console.log(`[management] assetsMode selecionado: ${payload.assetsMode}`);
 
         function processConfig(prefix, form) {
             const config = {};

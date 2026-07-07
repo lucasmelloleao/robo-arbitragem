@@ -31,6 +31,11 @@ const exchangeSchema = new mongoose.Schema({
         type: Boolean,
         default: true
     },
+    assetsMode: {
+        type: String,
+        enum: ['list', 'all'],
+        default: 'list'
+    },
     notes: {
         type: String,
         trim: true
