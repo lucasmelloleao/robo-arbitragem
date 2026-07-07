@@ -10,6 +10,7 @@ const { sendJson, sendNoContent } = require('./src/http-utils');
 const { normalizeExchangeId: normalizeSupportedExchangeId } = require('./src/exchange-credentials');
 const { createApiRouter } = require('./src/routes');
 const { createWebSocketHandlers } = require('./src/ws/handlers');
+const { isMexcOversoldError } = require('./src/mexc-errors');
 
 function getContentType(filePath) {
     const extension = path.extname(filePath).toLowerCase();
@@ -174,7 +175,11 @@ function createAppServer() {
                     console.log(`[market-making] loop em background encerrado para ${resolvedExchangeId}: ${stopAfterSuccessInLive ? 'live-orders-created' : 'favorable-opportunity-found'}`);
                 }
             } catch (error) {
-                console.error(`[market-making] falha no loop em background para ${resolvedExchangeId}: ${error.message}`);
+                if (isMexcOversoldError(error)) {
+                    console.warn(`[market-making] loop em background para ${resolvedExchangeId}: par bloqueado por Oversold MEXC (code 30005). O loop continua monitorando outros símbolos.`);
+                } else {
+                    console.error(`[market-making] falha no loop em background para ${resolvedExchangeId}: ${error.message}`);
+                }
             } finally {
                 subscription.running = false;
             }

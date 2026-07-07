@@ -8,6 +8,7 @@ const {
     normalizeExchangeId: normalizeSupportedExchangeId
 } = require('./exchange-credentials');
 const { resolveMarketMakingConfig, resolveTimeout } = require('./exchange-config');
+const { isMexcOversoldError, extractMexcOversoldInfo } = require('./mexc-errors');
 
 const MAX_REALISTIC_SPREAD = 2.0;
 const HIGH_LIQUIDITY_ASSETS = ['SOL', 'BTC'];
@@ -557,7 +558,44 @@ async function createMarketMakingService(exchangeId) {
                 throw new Error(`O par ${config.symbol} não está disponível em ${configuredExchangeId}.`);
             }
 
-            const orderBook = await exchange.fetchOrderBook(config.symbol, config.orderBookDepth);
+            let orderBook;
+            try {
+                orderBook = await exchange.fetchOrderBook(config.symbol, config.orderBookDepth);
+            } catch (orderBookError) {
+                if (isMexcOversoldError(orderBookError)) {
+                    const oversoldInfo = extractMexcOversoldInfo(orderBookError);
+                    console.warn(`[market-making] Par ${config.symbol} bloqueado por Oversold na MEXC. Rotacionando para o próximo símbolo.`);
+                    
+                    // Rotaciona imediatamente para o próximo símbolo
+                    const rotation = rotateActiveSymbol('oversold');
+                    const result = {
+                        timestamp: new Date().toISOString(),
+                        mode: config.mode,
+                        exchange: configuredExchangeId,
+                        symbol: activeSymbol,
+                        configuredSymbols: [...config.symbols],
+                        symbolAttempt: currentSymbolAttempts + 1,
+                        maxSymbolAttempts: config.maxSymbolAttempts,
+                        status: 'oversold',
+                        summary: `Par ${activeSymbol} bloqueado por Oversold MEXC (code 30005). ${rotation ? `Rotacionado para ${rotation.nextSymbol}.` : 'Sem símbolos alternativos configurados.'}`,
+                        execution: {
+                            status: 'oversold',
+                            message: `A MEXC retornou Oversold para ${activeSymbol}. O par será ignorado temporariamente.`
+                        }
+                    };
+                    
+                    latestRun = result;
+                    recentRuns.unshift(result);
+                    if (recentRuns.length > 10) {
+                        recentRuns.length = 10;
+                    }
+                    
+                    console.warn(`[market-making] ${result.summary}`);
+                    return result;
+                }
+                throw orderBookError;
+            }
+            
             const bestBid = orderBook?.bids?.[0];
             const bestAsk = orderBook?.asks?.[0];
 

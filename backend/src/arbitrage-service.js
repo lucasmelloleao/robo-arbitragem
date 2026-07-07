@@ -8,6 +8,7 @@ const {
     normalizeExchangeId: normalizeSupportedExchangeId
 } = require('./exchange-credentials');
 const { resolveArbitrageConfig, resolveTimeout } = require('./exchange-config');
+const { isMexcOversoldError, extractMexcOversoldInfo } = require('./mexc-errors');
 
 const MAX_REALISTIC_SPREAD = 2.0;
 const HIGH_LIQUIDITY_ASSETS = ['SOL', 'BTC'];
@@ -502,14 +503,29 @@ async function createArbitrageService(exchangeId) {
         try {
             const selectedTriangles = getTrianglesForCycle();
             const uniquePairs = [...new Set(selectedTriangles.flatMap((triangle) => [triangle.pair1, triangle.pair2, triangle.pair3]))];
+            
+            // Busca order books de forma resiliente: pares com erro Oversold são pulados
             const orderBookEntries = await Promise.all(
-                uniquePairs.map(async (pair) => [pair, await exchange.fetchOrderBook(pair, config.orderBookDepth)])
+                uniquePairs.map(async (pair) => {
+                    try {
+                        const orderBook = await exchange.fetchOrderBook(pair, config.orderBookDepth);
+                        return [pair, orderBook];
+                    } catch (error) {
+                        if (isMexcOversoldError(error)) {
+                            const oversoldInfo = extractMexcOversoldInfo(error);
+                            console.warn(`[arbitrage] Par ${pair} ignorado (Oversold na MEXC). O ciclo continua normalmente.`);
+                            return [pair, null];
+                        }
+                        throw error;
+                    }
+                })
             );
             const orderBooks = new Map(orderBookEntries);
             const results = [];
             const evaluations = [];
             let skippedBySpread = 0;
             let skippedByVolume = 0;
+            let skippedByOversold = 0;
             const loggedAt = new Date().toISOString();
 
             for (const triangle of selectedTriangles) {
@@ -521,6 +537,18 @@ async function createArbitrageService(exchangeId) {
                 const orderBook1 = orderBooks.get(triangle.pair1);
                 const orderBook2 = orderBooks.get(triangle.pair2);
                 const orderBook3 = orderBooks.get(triangle.pair3);
+
+                // Verifica se algum dos pares está bloqueado por Oversold na MEXC
+                if (orderBook1 === null || orderBook2 === null || orderBook3 === null) {
+                    skippedByOversold += 1;
+                    const blockedPairs = [];
+                    if (orderBook1 === null) blockedPairs.push(triangle.pair1);
+                    if (orderBook2 === null) blockedPairs.push(triangle.pair2);
+                    if (orderBook3 === null) blockedPairs.push(triangle.pair3);
+                    finalizeEvaluation(evaluation, 'skipped', 'Triangulo descartado por Oversold MEXC em um ou mais pares.');
+                    addEvaluationStep(evaluation, 'Oversold MEXC', `Pares bloqueados: ${blockedPairs.join(', ')}. A MEXC retornou erro Oversold (code 30005) para estes pares.`, 'error');
+                    continue;
+                }
 
                 const askLevel1 = getTopLevel(orderBook1, 'asks');
                 const askLevel2 = getTopLevel(orderBook2, 'asks');
@@ -714,7 +742,7 @@ async function createArbitrageService(exchangeId) {
             results.sort((left, right) => right.percentage - left.percentage);
             const opportunities = results.filter((result) => result.percentage >= config.minProfitPercent);
 
-            console.log((`[arbitrage] Varredura concluída em ${loggedAt}. Triângulos avaliados: ${selectedTriangles.length}, oportunidades encontradas: ${opportunities.length}, descartados por spread: ${skippedBySpread}, descartados por volume/slippage: ${skippedByVolume}.`));
+            console.log((`[arbitrage] Varredura concluída em ${loggedAt}. Triângulos avaliados: ${selectedTriangles.length}, oportunidades encontradas: ${opportunities.length}, descartados por spread: ${skippedBySpread}, descartados por volume/slippage: ${skippedByVolume}, descartados por Oversold MEXC: ${skippedByOversold}.`));
             if (opportunities.length > 0) {
                 await appendOpportunityLog({
                     timestamp: loggedAt,
