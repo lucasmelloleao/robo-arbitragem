@@ -10,7 +10,7 @@ const { sendJson, sendNoContent } = require('./src/http-utils');
 const { normalizeExchangeId: normalizeSupportedExchangeId } = require('./src/exchange-credentials');
 const { createApiRouter } = require('./src/routes');
 const { createWebSocketHandlers } = require('./src/ws/handlers');
-const { isMexcOversoldError } = require('./src/mexc-errors');
+const { isMexcOversoldError, isRateLimitError } = require('./src/mexc-errors');
 
 function getContentType(filePath) {
     const extension = path.extname(filePath).toLowerCase();
@@ -175,6 +175,14 @@ function createAppServer() {
                     console.log(`[market-making] loop em background encerrado para ${resolvedExchangeId}: ${stopAfterSuccessInLive ? 'live-orders-created' : 'favorable-opportunity-found'}`);
                 }
             } catch (error) {
+                // RATE LIMIT (429): para o loop IMEDIATAMENTE para não agravar o bloqueio
+                if (isRateLimitError(error)) {
+                    clearInterval(subscription.intervalId);
+                    backgroundMarketMakingSubscriptions.delete(resolvedExchangeId);
+                    console.error(`[market-making] RATE LIMIT (429) em ${resolvedExchangeId}. Loop em background ENCERRADO IMEDIATAMENTE para evitar bloqueio permanente. Mensagem: ${error.message}`);
+                    return;
+                }
+
                 if (isMexcOversoldError(error)) {
                     console.warn(`[market-making] loop em background para ${resolvedExchangeId}: par bloqueado por Oversold MEXC (code 30005). O loop continua monitorando outros símbolos.`);
                 } else {
@@ -569,6 +577,14 @@ function createAppServer() {
                     console.log(`[arbitrage] loop em background encerrado para ${resolvedExchangeId} apos ${subscription.scanCount} scan(s) (limite configurado).`);
                 }
             } catch (error) {
+                // RATE LIMIT (429): para o loop IMEDIATAMENTE para não agravar o bloqueio
+                if (isRateLimitError(error)) {
+                    clearInterval(subscription.intervalId);
+                    backgroundArbitrageSubscriptions.delete(resolvedExchangeId);
+                    console.error(`[arbitrage] RATE LIMIT (429) em ${resolvedExchangeId}. Loop em background ENCERRADO IMEDIATAMENTE para evitar bloqueio permanente. Mensagem: ${error.message}`);
+                    return;
+                }
+
                 console.error(`[arbitrage] falha no loop em background para ${resolvedExchangeId}: ${error.message}`);
             } finally {
                 subscription.running = false;

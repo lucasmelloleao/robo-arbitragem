@@ -1,11 +1,18 @@
 /**
- * Utilitários para tratamento de erros específicos da MEXC.
- * A MEXC pode retornar o erro "Oversold" (code 30005) quando um ativo está
- * em estado de supervendido e a exchange bloqueia temporariamente a negociação.
+ * Utilitários para tratamento de erros específicos de exchanges.
+ * 
+ * Oversold (code 30005) - MEXC: quando um ativo está em estado de
+ * supervendido e a exchange bloqueia temporariamente a negociação.
+ * 
+ * Rate Limit (code 429): quando a exchange detecta requisições excessivas.
+ * Neste caso o loop em background deve parar IMEDIATAMENTE para
+ * não agravar o bloqueio.
  */
 
 const MEXC_OVERSOLD_CODES = [30005];
 const MEXC_OVERSOLD_MESSAGES = ['oversold'];
+const RATE_LIMIT_CODES = [429];
+const RATE_LIMIT_MESSAGES = ['too many requests', 'rate limit', 'rate_limit'];
 
 /**
  * Verifica se um erro é do tipo "Oversold" da MEXC.
@@ -48,6 +55,46 @@ function isMexcOversoldError(error) {
 }
 
 /**
+ * Verifica se um erro é do tipo Rate Limit (429).
+ * Esse erro ocorre quando a exchange recebe requisições em excesso.
+ * Quando detectado, o loop em background deve parar IMEDIATAMENTE
+ * para não agravar o bloqueio.
+ *
+ * @param {Error} error - O erro a ser verificado
+ * @returns {boolean} true se for um erro Rate Limit
+ */
+function isRateLimitError(error) {
+    if (!error) {
+        return false;
+    }
+
+    // Verifica pelo código HTTP 429 (ccxt normalmente expõe como error.code ou error.statusCode)
+    const errorCode = error.code || error.statusCode || (error.httpStatusCode) || (error.response && error.response.statusCode);
+
+    if (typeof errorCode === 'number' && RATE_LIMIT_CODES.includes(errorCode)) {
+        return true;
+    }
+
+    // Verifica na mensagem de erro
+    const message = String(error.message || '').toLowerCase();
+    if (RATE_LIMIT_MESSAGES.some((keyword) => message.includes(keyword))) {
+        return true;
+    }
+
+    // Verifica no body da resposta (ccxt pode incluir a resposta bruta)
+    if (error.response) {
+        const responseBody = typeof error.response === 'string'
+            ? error.response
+            : JSON.stringify(error.response);
+        if (RATE_LIMIT_MESSAGES.some((keyword) => responseBody.toLowerCase().includes(keyword))) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
  * Extrai informações detalhadas sobre o erro Oversold.
  *
  * @param {Error} error - O erro a ser analisado
@@ -78,7 +125,10 @@ function extractMexcOversoldInfo(error) {
 
 module.exports = {
     isMexcOversoldError,
+    isRateLimitError,
     extractMexcOversoldInfo,
     MEXC_OVERSOLD_CODES,
-    MEXC_OVERSOLD_MESSAGES
+    MEXC_OVERSOLD_MESSAGES,
+    RATE_LIMIT_CODES,
+    RATE_LIMIT_MESSAGES
 };
