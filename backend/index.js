@@ -10,12 +10,14 @@ server.listen(port, () => {
     console.log(`Frontend disponível em http://localhost:${port}`);
     console.log(`Modo atual: ${process.env.ARBITRAGE_ENABLE_LIVE_TRADING === 'true' ? 'live' : 'simulation'}`);
 
-
+/*
     
     // Inicializar Cross-Market Service (independente de arbitrage e MM)
     crossMarketService.initialize().catch((error) => {
         console.error('[cross-market] falha ao inicializar servico:', error.message);
     });
+*/
+
 
 /*
 

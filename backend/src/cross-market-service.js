@@ -182,32 +182,44 @@ async function fetchTickerPrice(exchangeAcronym, asset1, asset2) {
  */
 async function executeCrossMarketTrade(strategy, buyExchange, sellExchange, buyPrice, sellPrice) {
     const symbol = `${strategy.asset2}/${strategy.asset1}`;
-    const amount = strategy.operationAmount;
-
-    log('info', 'Iniciando execucao de trade LIVE', {
-        strategy: strategy.name,
-        symbol,
-        amount,
-        buyAt: buyExchange,
-        sellAt: sellExchange
-    }, strategy._id);
+    const quoteAmount = strategy.operationAmount; // Valor em moeda de cotação (ex: 10 USDT)
 
     try {
-        // 1. Obter instâncias autenticadas
+        // 1. Obter instâncias autenticadas e carregar mercados para obter regras de precisão
         const buyInstance = await getCcxtInstance(buyExchange, true);
         const sellInstance = await getCcxtInstance(sellExchange, true);
+        await Promise.all([
+            buyInstance.loadMarkets(),
+            sellInstance.loadMarkets()
+        ]);
+
+        // Calcula a quantidade da moeda base (ex: HYPE) e formata com a precisão de cada exchange
+        const rawBaseAmount = quoteAmount / buyPrice;
+        const buyAmountFormatted = buyInstance.amountToPrecision(symbol, rawBaseAmount);
+        const sellAmountFormatted = sellInstance.amountToPrecision(symbol, rawBaseAmount);
+
+        log('info', 'Iniciando execucao de trade LIVE', {
+            strategy: strategy.name,
+            symbol,
+            quoteAmount: quoteAmount,
+            buyAmount: buyAmountFormatted,
+            sellAmount: sellAmountFormatted,
+            buyAt: buyExchange,
+            sellAt: sellExchange
+        }, strategy._id);
 
         // 2. Validar saldos
         const buyBalance = await buyInstance.fetchBalance();
         const quoteBalance = buyBalance.free[strategy.asset1];
-        if (!quoteBalance || quoteBalance < (amount * buyPrice)) {
-            throw new Error(`Saldo insuficiente em ${buyExchange}: necessario ~${(amount * buyPrice).toFixed(4)} ${strategy.asset1}, disponivel ${quoteBalance || 0}`);
+        if (!quoteBalance || quoteBalance < quoteAmount) {
+            throw new Error(`Saldo insuficiente em ${buyExchange}: necessario ~${quoteAmount.toFixed(4)} ${strategy.asset1}, disponivel ${quoteBalance || 0}`);
         }
 
         const sellBalance = await sellInstance.fetchBalance();
         const baseBalance = sellBalance.free[strategy.asset2];
-        if (!baseBalance || baseBalance < amount) {
-            throw new Error(`Saldo insuficiente em ${sellExchange}: necessario ${amount} ${strategy.asset2}, disponivel ${baseBalance || 0}`);
+        // Valida contra o lote formatado de venda, que é o que será enviado para a API
+        if (!baseBalance || baseBalance < parseFloat(sellAmountFormatted)) {
+            throw new Error(`Saldo insuficiente em ${sellExchange}: necessario ${sellAmountFormatted} ${strategy.asset2}, disponivel ${baseBalance || 0}`);
         }
 
         log('info', 'Saldos validados com sucesso', {
@@ -222,11 +234,12 @@ async function executeCrossMarketTrade(strategy, buyExchange, sellExchange, buyP
                 buyExchange,
                 sellExchange,
                 symbol,
-                amount
+                buyAmount: buyAmountFormatted,
+                sellAmount: sellAmountFormatted
             }, strategy._id);
             [buyOrder, sellOrder] = await Promise.all([
-                buyInstance.createMarketBuyOrder(symbol, amount),
-                sellInstance.createMarketSellOrder(symbol, amount)
+                buyInstance.createMarketBuyOrder(symbol, parseFloat(buyAmountFormatted)),
+                sellInstance.createMarketSellOrder(symbol, parseFloat(sellAmountFormatted))
             ]);
             log('info', 'Ordem de COMPRA executada', { exchange: buyExchange, orderId: buyOrder.id }, strategy._id);
             log('info', 'Ordem de VENDA executada', { exchange: sellExchange, orderId: sellOrder.id }, strategy._id);
@@ -334,8 +347,11 @@ async function executeScan(strategy) {
         var totalCost = tradingFee;
         var netSpread = spreadPercent - totalCost;
         
+        // O lucro estimado agora é calculado sobre o valor da operação (em moeda de cotação)
+        const quoteAmount = strategy.operationAmount;
+        const estimatedProfitInQuote = (quoteAmount * netSpread) / 100;
         result.estimatedProfitPercent = netSpread;
-        result.estimatedProfit = (strategy.operationAmount * netSpread) / 100;
+        result.estimatedProfit = estimatedProfitInQuote;
         
         if (netSpread > minSpread) {
             result.hasOpportunity = true;
