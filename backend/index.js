@@ -1,6 +1,7 @@
 require('dotenv').config();
 
 const { createAppServer } = require('./server');
+const crossMarketService = require('./src/cross-market-service');
 
 const port = 8081;
 const server = createAppServer();
@@ -8,6 +9,15 @@ const server = createAppServer();
 server.listen(port, () => {
     console.log(`Frontend disponível em http://localhost:${port}`);
     console.log(`Modo atual: ${process.env.ARBITRAGE_ENABLE_LIVE_TRADING === 'true' ? 'live' : 'simulation'}`);
+
+
+    
+    // Inicializar Cross-Market Service (independente de arbitrage e MM)
+    crossMarketService.initialize().catch((error) => {
+        console.error('[cross-market] falha ao inicializar servico:', error.message);
+    });
+
+/*
 
     //const exchanges = ['binance', 'kraken', 'bybit', 'mexc', 'coinbase', 'gateio', 'okx', 'woo'];
     const exchanges = [ 'mexc'];
@@ -22,4 +32,5 @@ server.listen(port, () => {
                 console.error(`[arbitrage] falha ao iniciar automaticamente ${exchangeId.toUpperCase()}: ${error.message}`);
             });
     });
+    */
 });

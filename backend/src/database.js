@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const User = require('./models/User');
 const Exchange = require('./models/Exchange');
+const CrossMarket = require('./models/CrossMarket');
 
 const databaseUri = process.env.MONGODB_URI;
 let isConnected = false;
@@ -253,6 +254,48 @@ async function toggleExchangeStatus(id) {
     return sanitizeExchange(exchange);
 }
 
+// ===== Cross-Market Strategy =====
+
+async function getAllCrossMarketStrategies() {
+    assertDatabaseAvailable();
+    return CrossMarket.find({}).sort({ created_at: -1 }).lean();
+}
+
+async function getCrossMarketStrategyById(id) {
+    assertDatabaseAvailable();
+    return CrossMarket.findById(id).lean();
+}
+
+async function createCrossMarketStrategy(data) {
+    assertDatabaseAvailable();
+    const strategy = new CrossMarket(data);
+    await strategy.save();
+    return strategy.toObject();
+}
+
+async function updateCrossMarketStrategy(id, updates) {
+    assertDatabaseAvailable();
+    return CrossMarket.findByIdAndUpdate(
+        id,
+        updates,
+        { returnDocument: 'after' }
+    ).lean();
+}
+
+async function deleteCrossMarketStrategy(id) {
+    assertDatabaseAvailable();
+    return CrossMarket.findByIdAndDelete(id).lean();
+}
+
+async function toggleCrossMarketStrategy(id) {
+    assertDatabaseAvailable();
+    const strategy = await CrossMarket.findById(id);
+    if (!strategy) return null;
+    strategy.active = !strategy.active;
+    await strategy.save();
+    return strategy.toObject();
+}
+
 module.exports = {
     connect,
     disconnect,
@@ -269,5 +312,12 @@ module.exports = {
     createExchange,
     updateExchange,
     deleteExchange,
-    toggleExchangeStatus
+    toggleExchangeStatus,
+    // Cross-Market
+    getAllCrossMarketStrategies,
+    getCrossMarketStrategyById,
+    createCrossMarketStrategy,
+    updateCrossMarketStrategy,
+    deleteCrossMarketStrategy,
+    toggleCrossMarketStrategy
 };

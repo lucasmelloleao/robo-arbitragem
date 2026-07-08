@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cross-Market Balances - ArbTrade</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <div class="app-layout">
+        <aside class="sidebar">
+            <div class="sidebar-logo">
+                <span>◆</span> Arb<span>Trade</span>
+            </div>
+            <nav>
+                <a href="/cross-market.html" class="nav-item" data-section="cross-market">
+                    <span class="nav-icon">🔄</span>
+                    <span>Cross-Market</span>
+                </a>
+                <div class="nav-section">
+                    <div class="nav-section-title">Execução</div>
+                    <a href="/cross-market-execution.html" class="nav-item" data-section="cross-market-execution">
+                        <span class="nav-icon">▶️</span>
+                        <span>Execução</span>
+                    </a>
+                    <a href="/cross-market-balances.html" class="nav-item active" data-section="cross-market-balances">
+                        <span class="nav-icon">💰</span>
+                        <span>Saldos</span>
+                    </a>
+                </div>
+                <div class="nav-section">
+                    <div class="nav-section-title">Cadastro</div>
+                    <a href="/users.html" class="nav-item" target="_self">
+                        <span class="nav-icon">👤</span>
+                        <span>Usuários</span>
+                    </a>
+                    <a href="/exchanges.html" class="nav-item" target="_self">
+                        <span class="nav-icon">🏢</span>
+                        <span>Exchanges</span>
+                    </a>
+                </div>
+            </nav>
+        </aside>
+
+        <div class="main-content">
+            <main class="shell">
+                <section class="hero">
+                    <div class="hero-top">
+                        <div>
+                            <div class="eyebrow">Saldos</div>
+                            <h1>Cross-Market Balances</h1>
+                        </div>
+                        <div class="hero-status-group">
+                            <div class="status-pill" id="cm-bal-status">
+                                <span class="status-dot" id="cm-bal-dot"></span>
+                                <span id="cm-bal-label">Inicializando...</span>
+                            </div>
+                        </div>
+                    </div>
+                    <p>Saldos de criptomoedas nas exchanges das estratégias Cross-Market.</p>
+                    <div class="actions">
+                        <button class="primary" id="cm-bal-refresh" type="button">Atualizar Saldos</button>
+                    </div>
+                    <span id="cm-bal-feedback" class="mono hero-feedback" role="status" aria-live="polite"></span>
+                </section>
+
+                <section class="workspace-section">
+                    <div class="section-heading">
+                        <div>
+                            <div class="eyebrow">Saldos</div>
+                            <h2>Cross-Market</h2>
+                        </div>
+                        <p>Saldos disponíveis nas exchanges utilizadas pelas estratégias.</p>
+                    </div>
+                    <section class="exchange-grid" id="cm-bal-grid"></section>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <script src="/js/config.js"></script>
+    <script type="module" src="/app.js"></script>
+    <script type="module">
+        import {
+            buildApiUrl,
+            escapeHtml,
+            formatNumber,
+            getExchangeTitle,
+            getVisibleExchanges
+        } from './js/shared.js';
+
+        const balGrid = document.getElementById('cm-bal-grid');
+        const balFeedback = document.getElementById('cm-bal-feedback');
+        const balStatusLabel = document.getElementById('cm-bal-label');
+        const balStatusDot = document.getElementById('cm-bal-dot');
+        const refreshButton = document.getElementById('cm-bal-refresh');
+
+        const balanceViews = new Map();
+
+        function updateStatusLabel() {
+            if (balanceViews.size > 0) {
+                balStatusDot.style.background = 'var(--accent)';
+                balStatusDot.style.boxShadow = 'var(--shadow-glow-accent)';
+                balStatusLabel.textContent = 'Carregado';
+            } else {
+                balStatusDot.style.background = 'var(--warn)';
+                balStatusDot.style.boxShadow = 'var(--shadow-glow-warn)';
+                balStatusLabel.textContent = 'Sem dados';
+            }
+        }
+
+        function createBalancePanelMarkup(exchangeId) {
+            return `
+                <article class="exchange-panel" data-exchange="${exchangeId}">
+                    <div class="exchange-panel-top">
+                        <div>
+                            <p class="route">${getExchangeTitle(exchangeId)}</p>
+                            <div class="exchange-feedback mono" data-role="bal-feedback">Aguardando carregamento...</div>
+                        </div>
+                    </div>
+                    <div class="exchange-status-meta">
+                        <article class="status-card">
+                            <span class="status-card-label">Exchange</span>
+                            <span class="status-card-value">${getExchangeTitle(exchangeId)}</span>
+                        </article>
+                        <article class="status-card">
+                            <span class="status-card-label">Total Ativos</span>
+                            <span class="status-card-value" data-role="total-assets">0</span>
+                        </article>
+                        <article class="status-card">
+                            <span class="status-card-label">Última atualização</span>
+                            <span class="status-card-value" data-role="last-update">Aguardando...</span>
+                        </article>
+                    </div>
+                    <section class="panel exchange-section">
+                        <h2>Saldos</h2>
+                        <div class="metrics" data-role="balances">
+                            <div class="empty">Carregando saldos...</div>
+                        </div>
+                    </section>
+                </article>
+            `;
+        }
+
+        async function backendRequest(action, exchangeId) {
+            try {
+                let url;
+                switch (action) {
+                    case 'cross-market-status':
+                        url = buildApiUrl(`cross-market/status`);
+                        break;
+                    case 'cross-market-balances':
+                        url = buildApiUrl(`cross-market/${exchangeId}/balances`);
+                        break;
+                    default:
+                        throw new Error(`Ação não suportada: ${action}`);
+                }
+
+                const response = await fetch(url, { method: 'GET' });
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Falha na requisição.');
+                }
+
+                return data;
+            } catch (error) {
+                throw error;
+            }
+        }
+
+        function renderBalances(view, balances) {
+            if (!balances || !Array.isArray(balances) || balances.length === 0) {
+                view.balances.innerHTML = '<div class="empty">Nenhum saldo disponível.</div>';
+                return;
+            }
+
+            view.balances.innerHTML = balances.map((item) => {
+                const feeText = item.transferFee !== null && typeof item.transferFee !== 'undefined'
+                    ? formatNumber(item.transferFee, 8)
+                    : '--';
+                
+                const minWithdrawText = item.minWithdraw !== null && typeof item.minWithdraw !== 'undefined'
+                    ? formatNumber(item.minWithdraw, 8)
+                    : '--';
+                
+                const valueUsdtText = item.valueUsdt !== null && typeof item.valueUsdt !== 'undefined'
+                    ? formatNumber(item.valueUsdt, 2)
+                    : '--';
+                
+                return `
+                <article class="log-card">
+                    <div class="row">
+                        <span>Moeda</span>
+                        <strong class="positive">${escapeHtml(item.currency || item.coin || 'N/A')}</strong>
+                    </div>
+                    <div class="row">
+                        <span>Total</span>
+                        <strong>${formatNumber(item.total || item.free || 0, 8)}</strong>
+                    </div>
+                    <div class="row">
+                        <span>Disponível</span>
+                        <strong class="positive">${formatNumber(item.free || item.available || 0, 8)}</strong>
+                    </div>
+                    <div class="row">
+                        <span>Em ordens</span>
+                        <strong>${formatNumber(item.used || item.hold || 0, 8)}</strong>
+                    </div>
+                    <div class="row">
+                        <span>Valor em USDT</span>
+                        <strong class="${item.valueUsdt !== null ? 'positive' : ''}">${valueUsdtText}</strong>
+                    </div>
+                </article>
+            `;
+            }).join('');
+        }
+
+        async function loadBalances(exchangeId) {
+            const view = balanceViews.get(exchangeId);
+            if (!view) return;
+
+            view.refreshButton && (view.refreshButton.disabled = true);
+            view.feedback.textContent = 'Atualizando...';
+
+            try {
+                const [statusData, balancesData] = await Promise.all([
+                    backendRequest('cross-market-status', exchangeId),
+                    backendRequest('cross-market-balances', exchangeId)
+                ]);
+
+                view.lastUpdate.textContent = new Date().toLocaleString();
+                
+                // A API retorna [{exchange, assets}] - extrair os assets da exchange correta
+                const exchangeBalance = balancesData.balances.find(b => b.exchange === exchangeId.toUpperCase());
+                const assets = exchangeBalance ? exchangeBalance.assets : [];
+                
+                view.totalAssets.textContent = assets.length;
+                renderBalances(view, assets);
+                view.feedback.textContent = 'Saldos atualizados.';
+            } catch (error) {
+                view.feedback.textContent = error.message;
+            } finally {
+                view.refreshButton && (view.refreshButton.disabled = false);
+            }
+        }
+
+        function initializeBalancePanels() {
+            const visibleExchanges = getVisibleExchanges();
+            balGrid.innerHTML = visibleExchanges.map(createBalancePanelMarkup).join('');
+
+            visibleExchanges.forEach((exchangeId) => {
+                const root = balGrid.querySelector(`[data-exchange="${exchangeId}"]`);
+                const view = {
+                    exchangeId,
+                    root,
+                    feedback: root.querySelector('[data-role="bal-feedback"]'),
+                    lastUpdate: root.querySelector('[data-role="last-update"]'),
+                    totalAssets: root.querySelector('[data-role="total-assets"]'),
+                    balances: root.querySelector('[data-role="balances"]'),
+                    refreshButton: root.querySelector('[data-role="bal-refresh"]')
+                };
+
+                if (view.refreshButton) {
+                    view.refreshButton.addEventListener('click', () => loadBalances(exchangeId));
+                }
+
+                balanceViews.set(exchangeId, view);
+            });
+
+            updateStatusLabel();
+        }
+
+        async function refreshAllBalances() {
+            refreshButton.disabled = true;
+            balFeedback.textContent = 'Atualizando saldos...';
+
+            try {
+                await Promise.all(getVisibleExchanges().map((id) => loadBalances(id)));
+                balFeedback.textContent = 'Saldos atualizados.';
+            } catch (error) {
+                balFeedback.textContent = error.message;
+            } finally {
+                refreshButton.disabled = false;
+            }
+        }
+
+        if (refreshButton) {
+            refreshButton.addEventListener('click', refreshAllBalances);
+        }
+
+        window.addEventListener('load-dashboard', () => {
+            if (balanceViews.size === 0) {
+                initializeBalancePanels();
+                Promise.all(getVisibleExchanges().map((id) => loadBalances(id))).catch(() => {});
+            }
+        });
+
+        window.addEventListener('init-panels', () => {
+            if (balanceViews.size === 0) {
+                initializeBalancePanels();
+                Promise.all(getVisibleExchanges().map((id) => loadBalances(id))).catch(() => {});
+            }
+        });
+
+        initializeBalancePanels();
+        Promise.all(getVisibleExchanges().map((id) => loadBalances(id))).catch(() => {});
+    </script>
+</body>
+</html>

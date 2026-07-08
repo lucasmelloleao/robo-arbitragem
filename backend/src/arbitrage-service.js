@@ -406,7 +406,6 @@ async function createArbitrageService(exchangeId) {
         if (config.assetsMode === 'all') {
             console.log(`[arbitrage] Modo "all" ativado para ${configuredExchangeId}. Buscando todos os pares que se entrelaçam com ${config.startAssets.join(', ')}...`);
 
-            const CHUNK_SIZE = 5;
             allModeTargetChunks = [];
             const allItems = [];
 
@@ -441,13 +440,13 @@ async function createArbitrageService(exchangeId) {
                 );
             }
 
-            // Separa os pares descobertos em lotes de 5 para execução da arbitragem
-            for (let index = 0; index < allItems.length; index += CHUNK_SIZE) {
-                allModeTargetChunks.push(allItems.slice(index, index + CHUNK_SIZE));
+            // Separa os pares descobertos em lotes para execução da arbitragem
+            for (let index = 0; index < allItems.length; index += config.chunkSize) {
+                allModeTargetChunks.push(allItems.slice(index, index + config.chunkSize));
             }
 
             allModeChunkCursor = 0;
-            console.log(`[arbitrage] Modo "all": ${allItems.length} pares descobertos, divididos em ${allModeTargetChunks.length} lotes de até ${CHUNK_SIZE} pares para ${configuredExchangeId}.`);
+            console.log(`[arbitrage] Modo "all": ${allItems.length} pares descobertos, divididos em ${allModeTargetChunks.length} lotes de até ${config.chunkSize} pares para ${configuredExchangeId}.`);
 
             // monitoredTriangles mantém o total expandido (apenas p/ status/referência)
             monitoredTriangles = [];
@@ -932,7 +931,8 @@ async function createArbitrageService(exchangeId) {
                     maxTrianglesPerCycle: config.maxTrianglesPerCycle,
                     orderBookDepth: config.orderBookDepth,
                     triangleSearchMode: config.triangleSearchMode,
-                    assetsMode: config.assetsMode
+                    assetsMode: config.assetsMode,
+                    chunkSize: config.chunkSize
                 }
             };
 
@@ -959,7 +959,7 @@ async function createArbitrageService(exchangeId) {
                 ? {
                     totalChunks: allModeTargetChunks.length,
                     currentChunk: allModeChunkCursor,
-                    pairsPerChunk: 5
+                    pairsPerChunk: config.chunkSize
                 }
                 : null,
             monitoredTriangles: monitoredTriangles.length,

@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cross-Market Execution - ArbTrade</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <div class="app-layout">
+        <aside class="sidebar">
+            <div class="sidebar-logo">
+                <span>◆</span> Arb<span>Trade</span>
+            </div>
+            <nav>
+                <a href="/cross-market.html" class="nav-item" data-section="cross-market">
+                    <span class="nav-icon">🔄</span>
+                    <span>Cross-Market</span>
+                </a>
+                <div class="nav-section">
+                    <div class="nav-section-title">Execução</div>
+                    <a href="/cross-market-execution.html" class="nav-item active" data-section="cross-market-execution">
+                        <span class="nav-icon">▶️</span>
+                        <span>Execução</span>
+                    </a>
+                </div>
+                <div class="nav-section">
+                    <div class="nav-section-title">Cadastro</div>
+                    <a href="/users.html" class="nav-item" target="_self">
+                        <span class="nav-icon">👤</span>
+                        <span>Usuários</span>
+                    </a>
+                    <a href="/exchanges.html" class="nav-item" target="_self">
+                        <span class="nav-icon">🏢</span>
+                        <span>Exchanges</span>
+                    </a>
+                </div>
+            </nav>
+        </aside>
+
+        <div class="main-content">
+            <main class="shell">
+                <section class="hero">
+                    <div class="hero-top">
+                        <div>
+                            <div class="eyebrow">Execução</div>
+                            <h1>Cross-Market Execution</h1>
+                        </div>
+                        <div class="hero-status-group">
+                            <div class="status-pill" id="cm-exec-status">
+                                <span class="status-dot" id="cm-exec-dot"></span>
+                                <span id="cm-exec-label">Inicializando...</span>
+                            </div>
+                        </div>
+                    </div>
+                    <p>Acompanhamento em tempo real das execuções de arbitragem cross-market.</p>
+                    <div class="actions">
+                        <button class="primary" id="cm-exec-run-all" type="button">Executar Todas</button>
+                        <button class="secondary" id="cm-exec-listen-all" type="button">Escutar Todas</button>
+                        <button class="secondary" id="cm-exec-refresh" type="button">Atualizar</button>
+                    </div>
+                    <span id="cm-exec-feedback" class="mono hero-feedback" role="status" aria-live="polite"></span>
+                </section>
+
+                <section class="workspace-section">
+                    <div class="section-heading">
+                        <div>
+                            <div class="eyebrow">Execução</div>
+                            <h2>Cross-Market</h2>
+                        </div>
+                        <p>Painéis de execução e acompanhamento de oportunidades por estratégia.</p>
+                    </div>
+                    <section class="exchange-grid" id="cm-exec-grid"></section>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <script src="/js/config.js"></script>
+    <script type="module" src="/app.js"></script>
+    <script type="module">
+        import {
+            buildApiUrl,
+            escapeHtml,
+            formatDateTime,
+            formatNumber,
+            getExchangeTitle,
+            getVisibleExchanges
+        } from './js/shared.js';
+
+        const execGrid = document.getElementById('cm-exec-grid');
+        const execFeedback = document.getElementById('cm-exec-feedback');
+        const execStatusLabel = document.getElementById('cm-exec-label');
+        const execStatusDot = document.getElementById('cm-exec-dot');
+        const runAllButton = document.getElementById('cm-exec-run-all');
+        const listenAllButton = document.getElementById('cm-exec-listen-all');
+        const refreshButton = document.getElementById('cm-exec-refresh');
+
+        const executionViews = new Map();
+        const activeSubscriptions = new Set();
+
+        function getSubscribedCount() {
+            return getVisibleExchanges().filter((exchangeId) => activeSubscriptions.has(exchangeId)).length;
+        }
+
+        function updateListenAllButton() {
+            const visibleExchanges = getVisibleExchanges();
+            const subscribedCount = getSubscribedCount();
+            const allSubscribed = visibleExchanges.length > 0 && subscribedCount === visibleExchanges.length;
+
+            listenAllButton.textContent = allSubscribed ? 'Parar escuta de todas' : 'Escutar todas';
+            listenAllButton.className = allSubscribed ? 'primary' : 'secondary';
+        }
+
+        function updateStatusLabel() {
+            const activeCount = activeSubscriptions.size;
+            if (activeCount > 0) {
+                execStatusDot.style.background = 'var(--accent)';
+                execStatusDot.style.boxShadow = 'var(--shadow-glow-accent)';
+                execStatusLabel.textContent = `${activeCount} execução(ões) ativa(s)`;
+            } else {
+                execStatusDot.style.background = 'var(--warn)';
+                execStatusDot.style.boxShadow = 'var(--shadow-glow-warn)';
+                execStatusLabel.textContent = 'Nenhuma execução ativa';
+            }
+        }
+
+        function createExecutionPanelMarkup(exchangeId) {
+            return `
+                <article class="exchange-panel" data-exchange="${exchangeId}">
+                    <div class="exchange-panel-top">
+                        <div>
+                            <p class="route">${getExchangeTitle(exchangeId)}</p>
+                            <div class="exchange-feedback mono" data-role="exec-feedback">Aguardando execução...</div>
+                        </div>
+                        <div class="actions actions-compact">
+                            <button class="primary" data-role="exec-run">Executar Agora</button>
+                            <button class="secondary" data-role="exec-listen">Escutar</button>
+                            <button class="secondary" data-role="exec-refresh">Atualizar</button>
+                        </div>
+                    </div>
+                    <div class="exchange-status-meta">
+                        <article class="status-card">
+                            <span class="status-card-label">Última atualização</span>
+                            <span class="status-card-value" data-role="last-update">Aguardando...</span>
+                        </article>
+                        <article class="status-card">
+                            <span class="status-card-label">Status</span>
+                            <span class="status-card-value" data-role="exec-status">Inativo</span>
+                        </article>
+                        <article class="status-card">
+                            <span class="status-card-label">Oportunidades</span>
+                            <span class="status-card-value" data-role="opportunities-count">0</span>
+                        </article>
+                    </div>
+                    <section class="panel exchange-section">
+                        <h2>Métricas</h2>
+                        <div class="metrics" data-role="metrics">
+                            <div class="empty">Sem dados de execução ainda.</div>
+                        </div>
+                    </section>
+                    <div class="grid exchange-panel-grid">
+                        <div class="stack">
+                            <section class="panel exchange-section">
+                                <h2>Execuções Recentes</h2>
+                                <div class="cards" data-role="exec-history"></div>
+                            </section>
+                        </div>
+                        <div class="stack">
+                            <section class="panel exchange-section">
+                                <h2>Logs</h2>
+                                <div class="cards" data-role="logs"></div>
+                            </section>
+                        </div>
+                    </div>
+                </article>
+            `;
+        }
+
+        async function backendRequest(action, exchangeId) {
+            try {
+                let url;
+                switch (action) {
+                    case 'cross-market-status':
+                        url = buildApiUrl(`cross-market/status`);
+                        break;
+                    case 'cross-market-execute':
+                        url = buildApiUrl(`cross-market/${exchangeId}/execute`);
+                        break;
+                    case 'cross-market-subscribe':
+                        url = buildApiUrl(`cross-market/${exchangeId}/subscribe`);
+                        break;
+                    case 'cross-market-unsubscribe':
+                        url = buildApiUrl(`cross-market/${exchangeId}/unsubscribe`);
+                        break;
+                    default:
+                        throw new Error(`Ação não suportada: ${action}`);
+                }
+
+                const response = await fetch(url, { method: 'GET' });
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Falha na requisição.');
+                }
+
+                return data;
+            } catch (error) {
+                throw error;
+            }
+        }
+
+        function renderMetrics(view, data) {
+            if (!data) {
+                view.metrics.innerHTML = '<div class="empty">Sem dados de execução ainda.</div>';
+                return;
+            }
+
+            const metrics = [
+                { label: 'Estratégias Ativas', value: data.activeStrategies || 0 },
+                { label: 'Scans Rodando', value: data.runningScans || 0 },
+                { label: 'Oportunidades', value: data.opportunities || 0 }
+            ];
+
+            view.metrics.innerHTML = metrics.map((m) =>
+                `<div class="metric-card"><span class="metric-label">${m.label}</span><span class="metric-value">${m.value}</span></div>`
+            ).join('');
+        }
+
+        function renderExecutionHistory(view, items) {
+            if (!Array.isArray(items) || items.length === 0) {
+                view.execHistory.innerHTML = '<div class="empty">Nenhuma execução recente.</div>';
+                return;
+            }
+
+            view.execHistory.innerHTML = items.map((item) => `
+                <article class="log-card">
+                    <p class="route">${new Date(item.timestamp).toLocaleString()}</p>
+                    <div class="row"><span>Estratégia</span><strong>${escapeHtml(item.strategyName)}</strong></div>
+                    <div class="row"><span>Status</span><strong>${item.status || 'n/a'}</strong></div>
+                    <div class="row"><span>Spread</span><strong class="positive">${formatNumber(item.spreadPercent, 4)}%</strong></div>
+                    <div class="row"><span>Lucro Estimado</span><strong>${formatNumber(item.estimatedProfit, 4)}</strong></div>
+                </article>
+            `).join('');
+        }
+
+        function renderLogs(view, items) {
+            if (!Array.isArray(items) || items.length === 0) {
+                view.logs.innerHTML = '<div class="empty">Nenhum log disponível.</div>';
+                return;
+            }
+
+            view.logs.innerHTML = items.map((item) => `
+                <article class="log-card">
+                    <p class="route">${new Date(item.timestamp).toLocaleString()}</p>
+                    <div class="row"><span>Mensagem</span><strong>${escapeHtml(item.message)}</strong></div>
+                    ${item.data ? `<pre class="mono">${escapeHtml(JSON.stringify(item.data, null, 2))}</pre>` : ''}
+                </article>
+            `).join('');
+        }
+
+        async function loadExecution(exchangeId) {
+            const view = executionViews.get(exchangeId);
+            if (!view) return;
+
+            view.refreshButton.disabled = true;
+            view.feedback.textContent = 'Atualizando...';
+
+            try {
+                // Carregar status do cross-market
+                const statusData = await backendRequest('cross-market-status', exchangeId);
+                
+                // Buscar logs de todas as estratégias (sem filtro específico)
+                const logsData = await fetch(buildApiUrl(`cross-market/logs?limit=50`))
+                    .then(r => r.json())
+                    .catch(() => ({ logs: [] }));
+
+                view.lastUpdate.textContent = formatDateTime(new Date().toISOString());
+                view.statusText.textContent = statusData.activeStrategies > 0 ? 'Ativo' : 'Inativo';
+                view.opportunitiesCount.textContent = statusData.opportunities || 0;
+                renderMetrics(view, statusData);
+                renderExecutionHistory(view, statusData.recentExecutions || []);
+                renderLogs(view, logsData.logs || []);
+                view.feedback.textContent = 'Painel atualizado.';
+            } catch (error) {
+                view.feedback.textContent = error.message;
+            } finally {
+                view.refreshButton.disabled = false;
+            }
+        }
+
+        async function executeCrossMarket(exchangeId, strategyId) {
+            const view = executionViews.get(exchangeId);
+            if (!view) return;
+
+            view.runButton.disabled = true;
+            view.feedback.textContent = 'Executando...';
+
+            try {
+                const result = await backendRequest('cross-market-execute', exchangeId);
+                view.feedback.textContent = result.message || 'Execução concluída.';
+                view.lastUpdate.textContent = formatDateTime(new Date().toISOString());
+                await loadExecution(exchangeId, strategyId);
+            } catch (error) {
+                view.feedback.textContent = error.message;
+            } finally {
+                view.runButton.disabled = false;
+            }
+        }
+
+        async function toggleSubscription(exchangeId) {
+            const view = executionViews.get(exchangeId);
+            if (!view) return;
+
+            view.listenButton.disabled = true;
+
+            try {
+                if (activeSubscriptions.has(exchangeId)) {
+                    await backendRequest('cross-market-unsubscribe', exchangeId);
+                    activeSubscriptions.delete(exchangeId);
+                    view.feedback.textContent = 'Escuta interrompida.';
+                    view.listenButton.textContent = 'Escutar';
+                    view.listenButton.className = 'secondary';
+                } else {
+                    const result = await backendRequest('cross-market-subscribe', exchangeId);
+                    activeSubscriptions.add(exchangeId);
+                    view.feedback.textContent = `Escuta ativada. Intervalo: ${result.intervalMs / 1000}s`;
+                    view.listenButton.textContent = 'Parar escuta';
+                    view.listenButton.className = 'primary';
+                }
+                updateStatusLabel();
+                updateListenAllButton();
+            } catch (error) {
+                view.feedback.textContent = error.message;
+            } finally {
+                view.listenButton.disabled = false;
+            }
+        }
+
+        async function toggleListenAll() {
+            const visibleExchanges = getVisibleExchanges();
+            const allSubscribed = visibleExchanges.length > 0 && visibleExchanges.every((id) => activeSubscriptions.has(id));
+
+            listenAllButton.disabled = true;
+            listenAllButton.textContent = allSubscribed ? 'Parando...' : 'Ativando...';
+
+            try {
+                if (allSubscribed) {
+                    await Promise.all(visibleExchanges.map((id) => backendRequest('cross-market-unsubscribe', id)));
+                    visibleExchanges.forEach((id) => activeSubscriptions.delete(id));
+                    execFeedback.textContent = 'Escuta interrompida em todas.';
+                } else {
+                    const targets = visibleExchanges.filter((id) => !activeSubscriptions.has(id));
+                    await Promise.all(targets.map((id) => backendRequest('cross-market-subscribe', id)));
+                    targets.forEach((id) => activeSubscriptions.add(id));
+                    execFeedback.textContent = 'Escuta ativada em todas as exchanges visíveis.';
+                }
+                updateStatusLabel();
+                updateListenAllButton();
+            } catch (error) {
+                execFeedback.textContent = error.message;
+            } finally {
+                listenAllButton.disabled = false;
+            }
+        }
+
+        async function runAllExecutions() {
+            runAllButton.disabled = true;
+            execFeedback.textContent = 'Executando todas...';
+
+            try {
+                const visibleExchanges = getVisibleExchanges();
+                await Promise.allSettled(visibleExchanges.map((id) => executeCrossMarket(id)));
+                execFeedback.textContent = 'Execução concluída.';
+            } catch (error) {
+                execFeedback.textContent = error.message;
+            } finally {
+                runAllButton.disabled = false;
+            }
+        }
+
+        async function refreshAll() {
+            refreshButton.disabled = true;
+            execFeedback.textContent = 'Atualizando...';
+
+            try {
+                await Promise.all(getVisibleExchanges().map((id) => loadExecution(id)));
+                execFeedback.textContent = 'Painéis atualizados.';
+            } catch (error) {
+                execFeedback.textContent = error.message;
+            } finally {
+                refreshButton.disabled = false;
+            }
+        }
+
+        function initializeExecutionPanels() {
+            const visibleExchanges = getVisibleExchanges();
+            execGrid.innerHTML = visibleExchanges.map(createExecutionPanelMarkup).join('');
+
+            visibleExchanges.forEach((exchangeId) => {
+                const root = execGrid.querySelector(`[data-exchange="${exchangeId}"]`);
+                const view = {
+                    exchangeId,
+                    root,
+                    feedback: root.querySelector('[data-role="exec-feedback"]'),
+                    lastUpdate: root.querySelector('[data-role="last-update"]'),
+                    statusText: root.querySelector('[data-role="exec-status"]'),
+                    opportunitiesCount: root.querySelector('[data-role="opportunities-count"]'),
+                    metrics: root.querySelector('[data-role="metrics"]'),
+                    execHistory: root.querySelector('[data-role="exec-history"]'),
+                    logs: root.querySelector('[data-role="logs"]'),
+                    runButton: root.querySelector('[data-role="exec-run"]'),
+                    listenButton: root.querySelector('[data-role="exec-listen"]'),
+                    refreshButton: root.querySelector('[data-role="exec-refresh"]')
+                };
+
+                view.runButton.addEventListener('click', () => executeCrossMarket(exchangeId));
+                view.refreshButton.addEventListener('click', () => loadExecution(exchangeId));
+                view.listenButton.addEventListener('click', () => toggleSubscription(exchangeId));
+
+                executionViews.set(exchangeId, view);
+            });
+
+            updateListenAllButton();
+            updateStatusLabel();
+        }
+
+        if (runAllButton) {
+            runAllButton.addEventListener('click', runAllExecutions);
+        }
+
+        if (listenAllButton) {
+            listenAllButton.addEventListener('click', toggleListenAll);
+        }
+
+        if (refreshButton) {
+            refreshButton.addEventListener('click', refreshAll);
+        }
+
+        window.addEventListener('load-dashboard', () => {
+            if (executionViews.size === 0) {
+                initializeExecutionPanels();
+                Promise.all(getVisibleExchanges().map((id) => loadExecution(id))).catch(() => {});
+            }
+        });
+
+        window.addEventListener('init-panels', () => {
+            if (executionViews.size === 0) {
+                initializeExecutionPanels();
+                Promise.all(getVisibleExchanges().map((id) => loadExecution(id))).catch(() => {});
+            }
+        });
+
+        initializeExecutionPanels();
+        Promise.all(getVisibleExchanges().map((id) => loadExecution(id))).catch(() => {});
+    </script>
+</body>
+</html>

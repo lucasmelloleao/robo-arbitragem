@@ -124,17 +124,11 @@ async function updateExchangeHandler({ request, response, params, context }) {
         }
 
         if (body.arbitrageConfig && typeof body.arbitrageConfig === 'object') {
-            updates.arbitrageConfig = {
-                ...(currentExchange.arbitrageConfig || {}),
-                ...body.arbitrageConfig
-            };
+            updates.arbitrageConfig = body.arbitrageConfig;
         }
 
         if (body.marketMakingConfig && typeof body.marketMakingConfig === 'object') {
-            updates.marketMakingConfig = {
-                ...(currentExchange.marketMakingConfig || {}),
-                ...body.marketMakingConfig
-            };
+            updates.marketMakingConfig = body.marketMakingConfig;
         }
 
         if (Object.keys(updates).length === 0) {

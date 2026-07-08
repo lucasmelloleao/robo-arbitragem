@@ -84,8 +84,8 @@ export function exchangeUsesPassphrase(exchangeIdOrAcronym) {
 
 export function getMarketMakingLoopDescription(keepListening) {
     return keepListening
-        ? 'loop contínuo ativo pelo .env'
-        : 'loop até encontrar oportunidade favorável e encerrar';
+        ? 'loop cont\u00ednuo ativo pelo .env'
+        : 'loop at\u00e9 encontrar oportunidade favor\u00e1vel e encerrar';
 }
 
 export function formatMarketMakingMode(mode) {
@@ -116,13 +116,17 @@ export function formatNumber(value, digits = 4) {
     return value.toFixed(digits);
 }
 
+function escapeHtmlReplacer(m) {
+    if (m === '&') return String.fromCharCode(38) + 'amp;';
+    if (m === '<') return String.fromCharCode(38) + 'lt;';
+    if (m === '>') return String.fromCharCode(38) + 'gt;';
+    if (m === '"') return String.fromCharCode(38) + 'quot;';
+    if (m === "'") return String.fromCharCode(38) + '#39;';
+    return m;
+}
+
 export function escapeHtml(value) {
-    return String(value ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
+    return String(value ?? '').replace(/[&<>"']/g, escapeHtmlReplacer);
 }
 
 export async function fetchJson(url, options = {}) {
@@ -130,18 +134,18 @@ export async function fetchJson(url, options = {}) {
     const result = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-        throw new Error(result.error || 'Falha ao processar requisição.');
+        throw new Error(result.error || 'Falha ao processar requisi\u00e7\u00e3o.');
     }
 
     return result;
 }
 
 export function metricCard(label, value) {
-    return `<article class="metric"><span class="label">${label}</span><span class="value">${value}</span></article>`;
+    return '<article class="metric"><span class="label">' + label + '</span><span class="value">' + value + '</span></article>';
 }
 
 export function infoMetricCard(label, value) {
-    return `<article class="metric"><span class="label">${label}</span><span class="value value-compact">${value}</span></article>`;
+    return '<article class="metric"><span class="label">' + label + '</span><span class="value value-compact">' + value + '</span></article>';
 }
 
 export function getEstimatedMarketMakingOutcome(run) {
@@ -173,16 +177,82 @@ export function getEstimatedMarketMakingOutcome(run) {
 
 export function formatEstimatedOutcome(outcome, currency = 'quote') {
     if (!outcome) {
-        return 'Aguardando simulacao...';
+        return 'Aguardando simula\u00e7\u00e3o...';
     }
 
     const toneClass = outcome.isPositive ? 'positive' : 'negative';
     const sign = outcome.isPositive ? '+' : '';
-    return `<span class="${toneClass}">${sign}${formatNumber(outcome.estimatedPnL, 6)} ${currency}</span> (${sign}${formatNumber(outcome.estimatedPnLPercent, 4)}%)`;
+    return '<span class="' + toneClass + '">' + sign + formatNumber(outcome.estimatedPnL, 6) + ' ' + currency + '</span> (' + sign + formatNumber(outcome.estimatedPnLPercent, 4) + '%)';
 }
 
 export function buildApiUrl(pathname) {
     const baseUrl = window.API_URL || '';
     const normalized = pathname.replace(/^\//, '');
-    return baseUrl ? `${baseUrl}/api/${normalized}` : `/api/${normalized}`;
+    return baseUrl ? baseUrl + '/api/' + normalized : '/api/' + normalized;
+}
+
+/**
+ * Sistema de Toast Notifications
+ */
+export function showToast(message, type = 'info', duration = 4000) {
+    var container = document.getElementById('toast-container');
+    if (!container) {
+        var newContainer = document.createElement('div');
+        newContainer.id = 'toast-container';
+        newContainer.className = 'toast-container';
+        newContainer.setAttribute('aria-live', 'polite');
+        newContainer.setAttribute('aria-atomic', 'true');
+        document.body.appendChild(newContainer);
+        container = newContainer;
+    }
+
+    var icons = {
+        success: '\u2705',
+        error: '\u274C',
+        warning: '\u26A0\uFE0F',
+        info: '\u2139\uFE0F'
+    };
+
+    var toast = document.createElement('div');
+    toast.className = 'toast toast-' + type;
+    toast.setAttribute('role', 'alert');
+    toast.innerHTML = '<span class="toast-icon" aria-hidden="true">' + (icons[type] || icons.info) + '</span><span class="toast-message">' + message + '</span>';
+
+    container.appendChild(toast);
+
+    setTimeout(function() {
+        toast.classList.add('toast-out');
+        setTimeout(function() {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        }, 300);
+    }, duration);
+}
+
+/**
+ * Cria um elemento skeleton para loading
+ */
+export function createSkeleton(type, count) {
+    type = type || 'text';
+    count = count || 1;
+    var skeletons = [];
+    for (var i = 0; i < count; i++) {
+        if (type === 'text') {
+            skeletons.push('<div class="skeleton skeleton-text' + (i % 2 === 0 ? ' skeleton-text-short' : '') + '"></div>');
+        } else if (type === 'card') {
+            skeletons.push('<div class="skeleton skeleton-card"></div>');
+        } else if (type === 'metric') {
+            skeletons.push('<div class="skeleton skeleton-metric"></div>');
+        }
+    }
+    return skeletons.join('');
+}
+
+/**
+ * Cria um spinner
+ */
+export function createSpinner(size) {
+    size = size || 'default';
+    return '<span class="spinner' + (size === 'large' ? ' spinner-lg' : '') + '" aria-hidden="true"></span>';
 }

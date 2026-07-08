@@ -3,12 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gerenciamento de Corretoras</title>
+    <meta name="description" content="Gerenciamento de Corretoras - ArbTrade">
+    <meta name="theme-color" content="#0d1117">
+    <title>Gerenciamento de Corretoras - ArbTrade</title>
     <link rel="stylesheet" href="/styles.css">
     <style>
         .config-section {
-            border: 1px solid rgba(130, 170, 210, 0.18);
-            border-radius: 12px;
+            border: 1px solid var(--border-primary);
+            border-radius: var(--radius-md);
             padding: 1rem;
             margin-top: 1rem;
             grid-column: 1 / -1;
@@ -16,8 +18,12 @@
         .config-section summary {
             cursor: pointer;
             font-weight: 600;
-            color: #f3f7fb;
+            color: var(--text-primary);
             padding: 0.5rem 0;
+            transition: color var(--transition-base);
+        }
+        .config-section summary:hover {
+            color: var(--accent);
         }
         .config-grid {
             display: grid;
@@ -39,15 +45,18 @@
     </style>
 </head>
 <body>
+    <!-- Toast Container -->
+    <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+
     <main class="shell">
         <section class="hero">
             <div class="hero-top">
                 <div>
-                    <div class="eyebrow">Configuracoes</div>
+                    <div class="eyebrow">Configurações</div>
                     <h1>Gerenciamento de Corretoras</h1>
                 </div>
                 <div class="hero-status-group">
-                    <a href="/" class="secondary" style="text-decoration: none; padding: 10px 20px;">Voltar ao painel</a>
+                    <a href="/" class="secondary" style="text-decoration: none; padding: 10px 20px; display: inline-block;">Voltar ao painel</a>
                 </div>
             </div>
             <p>Cadastre, altere, ative ou remova corretoras sem carregar o dashboard operacional completo.</p>
@@ -59,7 +68,7 @@
                     <div class="eyebrow">Cadastro</div>
                     <h2>Exchanges</h2>
                 </div>
-                <p>A edicao preserva as credenciais atuais quando API Key e Secret Key ficam em branco.</p>
+                <p>A edição preserva as credenciais atuais quando API Key e Secret Key ficam em branco.</p>
             </div>
 
             <section class="panel management-panel management-panel-accent">
@@ -69,7 +78,7 @@
                         <h2>Cadastro de Exchanges</h2>
                     </div>
                     <div class="actions actions-compact">
-                        <button class="primary" id="btn-show-exchange-form">Nova Corretora</button>
+                        <button class="primary" id="btn-show-exchange-form" type="button">Nova Corretora</button>
                     </div>
                 </div>
 
@@ -78,7 +87,7 @@
                         <div class="form-header">
                             <div>
                                 <h3 id="exchange-form-title">Cadastrar corretora</h3>
-                                <p id="exchange-form-hint">Informe nome, sigla e credenciais para habilitar a integracao.</p>
+                                <p id="exchange-form-hint">Informe nome, sigla e credenciais para habilitar a integração.</p>
                             </div>
                         </div>
                         <div class="form-grid">
@@ -92,15 +101,15 @@
                             </div>
                             <div class="form-group">
                                 <label for="exchange-api-key">API Key</label>
-                                <input type="text" id="exchange-api-key" name="apiKey" placeholder="Informe a API Key">
+                                <input type="text" id="exchange-api-key" name="apiKey" placeholder="Informe a API Key" autocomplete="off">
                             </div>
                             <div class="form-group">
                                 <label for="exchange-secret-key">Secret Key</label>
-                                <input type="password" id="exchange-secret-key" name="secretKey" placeholder="Informe a Secret Key">
+                                <input type="password" id="exchange-secret-key" name="secretKey" placeholder="Informe a Secret Key" autocomplete="off">
                             </div>
                             <div class="form-group" id="exchange-password-group" hidden>
                                 <label for="exchange-password" id="exchange-password-label">Passphrase</label>
-                                <input type="password" id="exchange-password" name="password" placeholder="Opcional para exchanges como OKX">
+                                <input type="password" id="exchange-password" name="password" placeholder="Opcional para exchanges como OKX" autocomplete="off">
                             </div>
                             
                             <!-- Configuração de Arbitrage -->
@@ -161,6 +170,11 @@
                                             <span>Live Trading</span>
                                         </label>
                                     </div>
+                                    <div class="form-group">
+                                        <label for="arb-chunk-size">Tamanho do Lote (Modo "All")</label>
+                                        <input type="number" id="arb-chunk-size" name="arbitrageConfig.chunkSize" placeholder="15" min="1" step="1">
+                                        <small>Número de pares a serem processados por ciclo no modo de arbitragem "all".</small>
+                                    </div>
                                 </div>
                             </details>
 
@@ -213,12 +227,12 @@
                             </details>
 
                             <div class="form-group form-group-wide">
-                                <label for="exchange-env-info">Informacoes do .env</label>
+                                <label for="exchange-env-info">Informações do .env</label>
                                 <textarea id="exchange-env-info" name="envInfo" rows="3" placeholder="Ex: BINANCE_API_KEY=xxx&#10;BINANCE_SECRET=yyy"></textarea>
                             </div>
                             <div class="form-group form-group-wide">
-                                <label for="exchange-notes">Observacoes</label>
-                                <textarea id="exchange-notes" name="notes" rows="3" placeholder="Anotacoes operacionais, ambiente, observacoes de uso..."></textarea>
+                                <label for="exchange-notes">Observações</label>
+                                <textarea id="exchange-notes" name="notes" rows="3" placeholder="Anotações operacionais, ambiente, observações de uso..."></textarea>
                             </div>
                             <div class="form-group form-group-wide">
                                 <label for="exchange-assets-mode">Modo de Ativos (Lista / Todos)</label>
@@ -226,21 +240,18 @@
                                     <option value="list">Lista - usar apenas ativos configurados</option>
                                     <option value="all">Todos - monitorar todos os pares disponíveis</option>
                                 </select>
-                                <small style="color: var(--text-dim); display: block; margin-top: 4px;">
-                                    "Lista" usa somente os ativos configurados em Arbitrage e Market Making.
-                                    "Todos" monitora todos os pares da corretora (ignora a lista configurada).
-                                </small>
+                                <small>"Lista" usa somente os ativos configurados em Arbitrage e Market Making. "Todos" monitora todos os pares da corretora (ignora a lista configurada).</small>
                             </div>
                             <label class="toggle-field" for="exchange-active">
                                 <input type="checkbox" id="exchange-active" name="active" checked>
-                                <span>Corretora ativa para operacao</span>
+                                <span>Corretora ativa para operação</span>
                             </label>
                         </div>
                         <div class="form-actions">
                             <button type="submit" class="primary" id="exchange-form-submit">Salvar corretora</button>
                             <button type="button" class="secondary" id="btn-cancel-exchange-form">Cancelar</button>
                         </div>
-                        <div id="exchange-form-feedback" class="mono form-feedback"></div>
+                        <div id="exchange-form-feedback" class="mono form-feedback" role="status" aria-live="polite"></div>
                     </form>
                 </div>
 
@@ -259,7 +270,7 @@
                     </article>
                 </div>
 
-                <div id="exchange-list" class="entity-list">
+                <div id="exchange-list" class="entity-list" aria-label="Lista de corretoras">
                     <div class="empty">Carregando corretoras...</div>
                 </div>
             </section>

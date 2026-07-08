@@ -498,12 +498,18 @@ export async function initDashboardPage() {
             return;
         }
 
-        view.metrics.innerHTML = [
+        const metrics = [
             metricCard('Triângulos', scan.selectedTriangles),
             metricCard('Pares consultados', scan.uniquePairs),
             metricCard('Filtrados por spread', scan.skippedBySpread),
             metricCard('Filtrados por volume', scan.skippedByVolume)
-        ].join('');
+        ];
+
+        if (scan.configuration?.assetsMode === 'all' && scan.configuration?.chunkSize) {
+            metrics.push(metricCard('Tamanho do Lote', scan.configuration.chunkSize));
+        }
+
+        view.metrics.innerHTML = metrics.join('');
     }
 
     function resultCard(result, index) {

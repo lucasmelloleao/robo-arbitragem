@@ -58,7 +58,8 @@ const exchangeSchema = new mongoose.Schema({
         minProfitPercent: { type: Number },
         maxSlippagePercent: { type: Number },
         enableLiveTrading: { type: Boolean, default: false },
-        opportunityLogFile: { type: String, trim: true }
+        opportunityLogFile: { type: String, trim: true },
+        chunkSize: { type: Number }
     },
     marketMakingConfig: {
         mode: { type: String, trim: true },

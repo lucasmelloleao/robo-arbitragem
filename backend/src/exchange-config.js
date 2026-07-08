@@ -37,7 +37,8 @@ const ARBITRAGE_DEFAULTS = {
         maxSlippagePercent: 0.3,
         enableLiveTrading: false,
         triangleSearchMode: 'LIST',
-        assetsMode: 'list'
+        assetsMode: 'list',
+        chunkSize: 15
     },
     exchanges: {
         kraken: { startAssets: ['USD'], bridgeAssets: ['BTC', 'ETH'], targetAssets: ['ETH'], investmentAmount: 100, tradingFee: 0.004, scanIntervalMs: 5000, maxTrianglesPerCycle: 6, orderBookDepth: 10, maxSpreadPercent: 0.25, minVolumeBuffer: 1.1, minProfitPercent: 0.3, maxSlippagePercent: 0.2 },
@@ -111,7 +112,8 @@ async function resolveArbitrageConfig(exchangeId) {
         maxSlippagePercent: Math.max(0, getSetting('maxSlippagePercent', parseNumber, mergedDefaults.maxSlippagePercent)),
         enableLiveTrading: getSetting('enableLiveTrading', (v) => Boolean(v) === true, mergedDefaults.enableLiveTrading),
         triangleSearchMode: getSetting('triangleSearchMode', (v) => String(v || 'LIST').toUpperCase(), mergedDefaults.triangleSearchMode),
-        assetsMode: getSetting('assetsMode', (v) => String(v || 'list').toLowerCase(), dbAssetsMode || mergedDefaults.assetsMode || 'list')
+        assetsMode: getSetting('assetsMode', (v) => String(v || 'list').toLowerCase(), dbAssetsMode || mergedDefaults.assetsMode || 'list'),
+        chunkSize: Math.max(1, Math.floor(getSetting('chunkSize', parseNumber, mergedDefaults.chunkSize)))
     };
 }
 

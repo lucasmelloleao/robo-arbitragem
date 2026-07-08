@@ -3,180 +3,85 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="ArbTrade - Painel Multi-Exchange para arbitragem e market making">
+    <meta name="theme-color" content="#0d1117">
     <title>ArbTrade - Painel Multi-Exchange</title>
     <link rel="stylesheet" href="/styles.css">
-    <style>
-        .app-layout {
-            display: grid;
-            grid-template-columns: 260px 1fr;
-            min-height: 100vh;
-        }
-
-        .sidebar {
-            position: fixed;
-            inset: 0 auto 0 0;
-            width: 260px;
-            background: linear-gradient(180deg, #0b1420 0%, #101c2a 100%);
-            border-right: 1px solid rgba(130, 170, 210, 0.18);
-            padding: 1.5rem 1rem;
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-            overflow-y: auto;
-            z-index: 100;
-        }
-
-        .sidebar-logo {
-            font-size: 1.25rem;
-            font-weight: 700;
-            color: #f3f7fb;
-            margin-bottom: 1.5rem;
-            padding: 0 0.5rem;
-        }
-
-        .sidebar-logo span {
-            color: #7df9c1;
-        }
-
-        .nav-item {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            padding: 0.875rem 1rem;
-            border-radius: 12px;
-            color: #94a7bb;
-            text-decoration: none;
-            font-weight: 500;
-            font-size: 0.9375rem;
-            transition: all 180ms ease;
-            cursor: pointer;
-            border: none;
-            background: transparent;
-            width: 100%;
-            text-align: left;
-        }
-
-        .nav-item:hover {
-            background: rgba(255, 255, 255, 0.06);
-            color: #f3f7fb;
-        }
-
-        .nav-item.active {
-            background: rgba(125, 249, 193, 0.12);
-            color: #7df9c1;
-        }
-
-        .nav-icon {
-            font-size: 1.25rem;
-            width: 1.5rem;
-            text-align: center;
-        }
-
-        .nav-section {
-            margin-top: 1rem;
-            padding-top: 1rem;
-            border-top: 1px solid rgba(130, 170, 210, 0.12);
-        }
-
-        .nav-section-title {
-            font-size: 0.6875rem;
-            text-transform: uppercase;
-            letter-spacing: 0.12em;
-            color: #6b7280;
-            padding: 0 0.75rem;
-            margin-bottom: 0.5rem;
-        }
-
-        .main-content {
-            grid-column: 2;
-            padding: 2rem;
-            margin-left: 260px;
-        }
-
-        .view-section {
-            display: none;
-        }
-
-        .view-section.active {
-            display: block;
-        }
-
-        .home-link-card {
-            text-align: left;
-            cursor: pointer;
-            background: none;
-            border: none;
-            color: inherit;
-        }
-
-        .iframe-shell {
-            width: 100%;
-            height: calc(100vh - 4rem);
-            border: none;
-            border-radius: 24px;
-            background: rgba(14, 22, 32, 0.85);
-            box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
-        }
-
-        @media (max-width: 768px) {
-            .app-layout {
-                grid-template-columns: 1fr;
-            }
-
-            .sidebar {
-                position: relative;
-                width: 100%;
-                inset: auto;
-                flex-direction: row;
-                flex-wrap: wrap;
-                padding: 1rem;
-            }
-
-            .main-content {
-                grid-column: 1;
-                padding: 1rem;
-                margin-left: 0;
-            }
-        }
-    </style>
 </head>
 <body>
+    <!-- Toast Container -->
+    <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+
     <div class="app-layout">
-        <aside class="sidebar">
-            <div class="sidebar-logo">
-                <span>◆</span> Arb<span>Trade</span>
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar" role="navigation" aria-label="Navegação principal">
+            <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Alternar menu" aria-expanded="false" type="button">
+                <span class="nav-icon" aria-hidden="true">☰</span>
+            </button>
+            <div class="sidebar-logo" aria-label="ArbTrade">
+                <span aria-hidden="true">◆</span> Arb<span>Trade</span>
             </div>
-            <nav>
-                <button class="nav-item active" data-view="home">
-                    <span class="nav-icon">🏠</span>
+            <nav aria-label="Seções do painel">
+                <button class="nav-item active" data-view="home" type="button" aria-current="page">
+                    <span class="nav-icon" aria-hidden="true">🏠</span>
                     <span>Home</span>
                 </button>
-                <button class="nav-item" data-view="arbitrage">
-                    <span class="nav-icon">📊</span>
+                <button class="nav-item" data-view="arbitrage" type="button">
+                    <span class="nav-icon" aria-hidden="true">📊</span>
                     <span>Arbitrage</span>
                 </button>
-                <button class="nav-item" data-view="market-making">
-                    <span class="nav-icon">📈</span>
+                <button class="nav-item" data-view="market-making" type="button">
+                    <span class="nav-icon" aria-hidden="true">📈</span>
                     <span>Market Making</span>
                 </button>
-                <div class="nav-section">
+                <button class="nav-item" data-view="cross-market" type="button">
+                    <span class="nav-icon" aria-hidden="true">🔀</span>
+                    <span>Cross Market</span>
+                </button>
+                <div class="nav-section" role="separator">
+                    <div class="nav-section-title">Estratégias</div>
+                    <button class="nav-item" data-view="cross-market" type="button">
+                        <span class="nav-icon" aria-hidden="true">🔄</span>
+                        <span>Cross-Market</span>
+                    </button>
+                    <button class="nav-item" data-view="cross-market-execution" type="button">
+                        <span class="nav-icon" aria-hidden="true">▶️</span>
+                        <span>Execução</span>
+                    </button>
+                    <button class="nav-item" data-view="cross-market-balances" type="button">
+                        <span class="nav-icon" aria-hidden="true">💰</span>
+                        <span>Saldos</span>
+                    </button>
+                </div>
+                <div class="nav-section" role="separator">
                     <div class="nav-section-title">Cadastro</div>
-                    <button class="nav-item" data-view="users">
-                        <span class="nav-icon">👤</span>
+                    <button class="nav-item" data-view="users" type="button">
+                        <span class="nav-icon" aria-hidden="true">👤</span>
                         <span>Usuários</span>
                     </button>
-                    <button class="nav-item" data-view="exchanges">
-                        <span class="nav-icon">🏢</span>
+                    <button class="nav-item" data-view="exchanges" type="button">
+                        <span class="nav-icon" aria-hidden="true">🏢</span>
                         <span>Exchanges</span>
                     </button>
                 </div>
             </nav>
         </aside>
 
-        <div class="main-content">
-            <div id="view-home" class="view-section active">
-                <main class="shell">
-                    <section class="hero">
+        <!-- Header -->
+        <header class="header" role="banner">
+            <div class="header-title">ArbTrade</div>
+            <div id="header-status" class="status-pill" style="display: none;" aria-live="polite">
+                <span class="status-dot" id="header-status-dot"></span>
+                <span id="header-status-label">Conectado</span>
+            </div>
+        </header>
+
+        <!-- Conteúdo Principal -->
+        <main class="main-content" role="main">
+            <!-- Home -->
+            <section id="view-home" class="view-section active" aria-label="Home">
+                <div class="shell">
+                    <div class="hero">
                         <div class="hero-top">
                             <div>
                                 <div class="eyebrow">Dashboard</div>
@@ -184,11 +89,11 @@
                             </div>
                         </div>
                         <p>Selecione um workspace para começar.</p>
-                    </section>
+                    </div>
 
-                    <section class="workspace-section">
+                    <section class="workspace-section" aria-label="Workspaces disponíveis">
                         <div class="hero-workspaces">
-                            <button class="workspace-callout home-link-card" data-view="arbitrage">
+                            <button class="workspace-callout home-link-card" data-view="arbitrage" type="button" aria-label="Acessar workspace de Arbitrage">
                                 <div>
                                     <p class="workspace-kicker">Workspace</p>
                                     <h2>📊 Arbitrage</h2>
@@ -198,7 +103,7 @@
                                     <span class="primary" style="padding: 14px 22px; border-radius: 999px; display: inline-block;">Acessar Arbitrage</span>
                                 </div>
                             </button>
-                            <button class="workspace-callout workspace-callout-mm home-link-card" data-view="market-making">
+                            <button class="workspace-callout workspace-callout-mm home-link-card" data-view="market-making" type="button" aria-label="Acessar workspace de Market Making">
                                 <div>
                                     <p class="workspace-kicker">Workspace</p>
                                     <h2>📈 Market Making</h2>
@@ -208,29 +113,40 @@
                                     <span class="secondary" style="padding: 14px 22px; border-radius: 999px; display: inline-block;">Acessar Market Making</span>
                                 </div>
                             </button>
+                            <button class="workspace-callout workspace-callout-cm home-link-card" data-view="cross-market" type="button" aria-label="Acessar workspace de Cross Market">
+                                <div>
+                                    <p class="workspace-kicker">Workspace</p>
+                                    <h2>🔀 Cross Market</h2>
+                                </div>
+                                <p>Monitora diferenças de preço entre duas corretoras. Compra na mais barata, vende na mais cara.</p>
+                                <div class="actions">
+                                    <span class="secondary" style="padding: 14px 22px; border-radius: 999px; display: inline-block;">Acessar Cross Market</span>
+                                </div>
+                            </button>
                         </div>
                     </section>
-                </main>
-            </div>
+                </div>
+            </section>
 
-            <div id="view-arbitrage" class="view-section">
-                <main class="shell">
-                    <section class="hero">
+            <!-- Arbitrage -->
+            <section id="view-arbitrage" class="view-section" aria-label="Workspace de Arbitrage">
+                <div class="shell">
+                    <div class="hero">
                         <div class="hero-top">
                             <div>
                                 <div class="eyebrow">Workspace</div>
                                 <h1>Arbitrage</h1>
                             </div>
                             <div class="hero-status-group">
-                                <div class="status-pill">
-                                    <span class="status-dot"></span>
+                                <div class="status-pill" aria-label="Status das exchanges">
+                                    <span class="status-dot" aria-hidden="true"></span>
                                     <span id="mode-label">Carregando exchanges...</span>
                                 </div>
-                                <div class="status-pill" id="socket-status-pill" data-socket-state="connecting">
-                                    <span class="status-dot" id="socket-status-dot"></span>
+                                <div class="status-pill" id="socket-status-pill" data-socket-state="connecting" aria-label="Status da conexão WebSocket">
+                                    <span class="status-dot" id="socket-status-dot" aria-hidden="true"></span>
                                     <span id="socket-status-label">WebSocket conectando...</span>
                                 </div>
-                                <div class="status-pill status-pill-wide">
+                                <div class="status-pill status-pill-wide" aria-label="Última atualização">
                                     <span class="status-caption">Última atualização</span>
                                     <span id="last-update-label">Aguardando dados...</span>
                                 </div>
@@ -238,14 +154,14 @@
                         </div>
                         <p>Varreduras, rotas, histórico de scans e logs por corretora.</p>
                         <div class="actions">
-                            <button class="primary" id="run-all">Executar todas</button>
-                            <button class="secondary" id="listen-all">Escutar todas</button>
-                            <button class="secondary" id="refresh-all">Atualizar arbitrage</button>
+                            <button class="primary" id="run-all" type="button">Executar todas</button>
+                            <button class="secondary" id="listen-all" type="button">Escutar todas</button>
+                            <button class="secondary" id="refresh-all" type="button">Atualizar arbitrage</button>
                         </div>
-                        <span id="feedback" class="mono hero-feedback"></span>
-                    </section>
+                        <span id="feedback" class="mono hero-feedback" role="status" aria-live="polite"></span>
+                    </div>
 
-                    <section class="workspace-section">
+                    <section class="workspace-section" aria-label="Painéis de arbitragem por exchange">
                         <div class="section-heading">
                             <div>
                                 <div class="eyebrow">Workspace</div>
@@ -253,14 +169,15 @@
                             </div>
                             <p>Painéis focados em scan, melhores rotas e logs persistidos.</p>
                         </div>
-                        <section class="exchange-grid" id="exchange-grid"></section>
+                        <div class="exchange-grid" id="exchange-grid" role="list" aria-label="Lista de exchanges"></div>
                     </section>
-                </main>
-            </div>
+                </div>
+            </section>
 
-            <div id="view-market-making" class="view-section">
-                <main class="shell">
-                    <section class="hero">
+            <!-- Market Making -->
+            <section id="view-market-making" class="view-section" aria-label="Workspace de Market Making">
+                <div class="shell">
+                    <div class="hero">
                         <div class="hero-top">
                             <div>
                                 <div class="eyebrow">Workspace</div>
@@ -269,12 +186,12 @@
                         </div>
                         <p>Gadgets, execução ativa, oportunidades favoráveis e histórico da estratégia.</p>
                         <div class="actions">
-                            <button class="secondary" id="run-market-making">Executar Market Making</button>
-                            <button class="secondary" id="listen-market-making-all">Escutar MM todas</button>
+                            <button class="secondary" id="run-market-making" type="button">Executar Market Making</button>
+                            <button class="secondary" id="listen-market-making-all" type="button">Escutar MM todas</button>
                         </div>
-                    </section>
+                    </div>
 
-                    <section class="workspace-section">
+                    <section class="workspace-section" aria-label="Painéis de market making">
                         <div class="section-heading">
                             <div>
                                 <div class="eyebrow">Workspace</div>
@@ -283,17 +200,17 @@
                             <p>Selecione a corretora nos gadgets abaixo e acompanhe o detalhamento completo.</p>
                         </div>
 
-                        <section class="exchange-grid market-making-grid" id="market-making-grid"></section>
+                        <div class="exchange-grid market-making-grid" id="market-making-grid" role="list" aria-label="Gadgets de market making"></div>
 
-                        <section class="panel" id="market-making-panel">
+                        <section class="panel" id="market-making-panel" aria-label="Detalhes do market making">
                             <div class="exchange-panel-top">
                                 <div>
                                     <h2 id="market-making-panel-title">Market Making</h2>
-                                    <div class="exchange-feedback mono" id="market-making-summary">Nenhuma execução de market making ainda.</div>
+                                    <div class="exchange-feedback mono" id="market-making-summary" role="status" aria-live="polite">Nenhuma execução de market making ainda.</div>
                                 </div>
                                 <div class="actions actions-compact">
-                                    <button class="secondary" id="listen-market-making">Escutar Market Making</button>
-                                    <button class="secondary" id="cancel-market-making-orders">Cancelar ordens MM</button>
+                                    <button class="secondary" id="listen-market-making" type="button">Escutar Market Making</button>
+                                    <button class="secondary" id="cancel-market-making-orders" type="button">Cancelar ordens MM</button>
                                 </div>
                             </div>
                             <div class="exchange-status-meta">
@@ -314,7 +231,7 @@
                                     <span class="status-card-value" id="market-making-loop">Aguardando configuração...</span>
                                 </article>
                             </div>
-                            <div class="metrics" id="market-making-metrics">
+                            <div class="metrics" id="market-making-metrics" aria-label="Métricas de market making">
                                 <div class="empty">Sem dados de market making ainda.</div>
                             </div>
                             <details class="panel exchange-section accordion-item section-accordion">
@@ -325,7 +242,7 @@
                                     </span>
                                 </summary>
                                 <div class="accordion-body">
-                                    <div class="cards" id="market-making-active-execution">
+                                    <div class="cards" id="market-making-active-execution" aria-label="Ordens pendentes">
                                         <div class="empty">Nenhuma ordem pendente de market making.</div>
                                     </div>
                                 </div>
@@ -338,7 +255,7 @@
                                     </span>
                                 </summary>
                                 <div class="accordion-body">
-                                    <div class="cards" id="market-making-favorable-opportunities">
+                                    <div class="cards" id="market-making-favorable-opportunities" aria-label="Oportunidades favoráveis">
                                         <div class="empty">Nenhuma oportunidade favorável registrada ainda.</div>
                                     </div>
                                 </div>
@@ -351,33 +268,98 @@
                                     </span>
                                 </summary>
                                 <div class="accordion-body">
-                                    <div class="cards" id="market-making-history">
+                                    <div class="cards" id="market-making-history" aria-label="Histórico de execuções">
                                         <div class="empty">Nenhuma execução de market making ainda.</div>
                                     </div>
                                 </div>
                             </details>
                         </section>
                     </section>
-                </main>
-            </div>
+                </div>
+            </section>
 
-            <div id="view-users" class="view-section">
-                <iframe src="/users.html" class="iframe-shell"></iframe>
-            </div>
+            <!-- Usuários -->
+            <section id="view-users" class="view-section" aria-label="Gerenciamento de Usuários">
+                <iframe src="/users.html" class="iframe-shell" title="Gerenciamento de Usuários" loading="lazy"></iframe>
+            </section>
 
-            <div id="view-exchanges" class="view-section">
-                <iframe src="/exchanges.html" class="iframe-shell"></iframe>
-            </div>
-        </div>
+            <!-- Exchanges -->
+            <section id="view-exchanges" class="view-section" aria-label="Gerenciamento de Exchanges">
+                <iframe src="/exchanges.html" class="iframe-shell" title="Gerenciamento de Exchanges" loading="lazy"></iframe>
+            </section>
+
+            <!-- Cross Market -->
+            <section id="view-cross-market" class="view-section" aria-label="Workspace de Cross Market">
+                <iframe src="/cross-market.html" class="iframe-shell" title="Estratégia Cross Market" loading="lazy"></iframe>
+            </section>
+
+            <!-- Cross Market Execution -->
+            <section id="view-cross-market-execution" class="view-section" aria-label="Workspace de Cross Market Execution">
+                <iframe src="/cross-market-execution.html" class="iframe-shell" title="Execução Cross Market" loading="lazy"></iframe>
+            </section>
+
+            <!-- Cross Market Balances -->
+            <section id="view-cross-market-balances" class="view-section" aria-label="Workspace de Cross Market Balances">
+                <iframe src="/cross-market-balances.html" class="iframe-shell" title="Saldos Cross Market" loading="lazy"></iframe>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer" role="contentinfo">
+            <small>ArbTrade &copy; 2026 &middot; Painel Multi-Exchange</small>
+        </footer>
     </div>
 
     <script src="/js/config.js"></script>
     <script type="module" src="/app.js"></script>
     <script>
+        'use strict';
+
+        // ===== Toast Notification System =====
+        const toastContainer = document.getElementById('toast-container');
+
+        function showToast(message, type = 'info', duration = 4000) {
+            if (!toastContainer) return;
+
+            const icons = {
+                success: '✅',
+                error: '❌',
+                warning: '⚠️',
+                info: 'ℹ️'
+            };
+
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.setAttribute('role', 'alert');
+            toast.innerHTML = `
+                <span class="toast-icon" aria-hidden="true">${icons[type] || icons.info}</span>
+                <span class="toast-message">${message}</span>
+            `;
+
+            toastContainer.appendChild(toast);
+
+            setTimeout(() => {
+                toast.classList.add('toast-out');
+                setTimeout(() => {
+                    if (toast.parentNode) {
+                        toast.parentNode.removeChild(toast);
+                    }
+                }, 300);
+            }, duration);
+        }
+
+        // Expor para uso global
+        window.showToast = showToast;
+
+        // ===== Navegação entre Views =====
         const navItems = document.querySelectorAll('.nav-item[data-view]');
         const viewSections = document.querySelectorAll('.view-section');
         const homeButtons = document.querySelectorAll('.home-link-card[data-view]');
+        const sidebar = document.getElementById('sidebar');
+        const sidebarToggle = document.getElementById('sidebar-toggle');
+        const appLayout = document.querySelector('.app-layout');
         let dashboardInitialized = false;
+        let sidebarCollapsed = false;
 
         function loadDashboardForView(viewName) {
             const marketMakingPanel = document.getElementById('market-making-panel');
@@ -405,8 +387,12 @@
         }
 
         function showView(viewName) {
+            // Atualizar seções
             viewSections.forEach((section) => section.classList.remove('active'));
-            navItems.forEach((nav) => nav.classList.remove('active'));
+            navItems.forEach((nav) => {
+                nav.classList.remove('active');
+                nav.removeAttribute('aria-current');
+            });
 
             const targetView = document.getElementById(`view-${viewName}`);
             const targetNav = document.querySelector(`.nav-item[data-view="${viewName}"]`);
@@ -417,9 +403,18 @@
 
             if (targetNav) {
                 targetNav.classList.add('active');
+                targetNav.setAttribute('aria-current', 'page');
             }
 
-            if (viewName === 'arbitrage' || viewName === 'market-making') {
+            // Fechar sidebar mobile após navegação
+            if (window.innerWidth <= 768 && sidebar) {
+                sidebar.classList.remove('mobile-open');
+                if (sidebarToggle) {
+                    sidebarToggle.setAttribute('aria-expanded', 'false');
+                }
+            }
+
+            if (viewName === 'arbitrage' || viewName === 'market-making' || viewName === 'cross-market' || viewName === 'cross-market-execution' || viewName === 'cross-market-balances') {
                 window.setTimeout(() => {
                     const app = window.app;
 
@@ -436,6 +431,27 @@
             }
         }
 
+        function toggleSidebar() {
+            if (window.innerWidth <= 768) {
+                const isOpen = sidebar.classList.toggle('mobile-open');
+                if (sidebarToggle) {
+                    sidebarToggle.setAttribute('aria-expanded', String(isOpen));
+                }
+            } else {
+                sidebarCollapsed = !sidebarCollapsed;
+                sidebar.classList.toggle('collapsed', sidebarCollapsed);
+                appLayout.classList.toggle('sidebar-collapsed', sidebarCollapsed);
+                if (sidebarToggle) {
+                    sidebarToggle.setAttribute('aria-expanded', String(!sidebarCollapsed));
+                }
+            }
+        }
+
+        // Event Listeners
+        if (sidebarToggle) {
+            sidebarToggle.addEventListener('click', toggleSidebar);
+        }
+
         navItems.forEach((item) => {
             item.addEventListener('click', () => {
                 const viewName = item.dataset.view;
@@ -446,11 +462,35 @@
         homeButtons.forEach((button) => {
             button.addEventListener('click', () => {
                 const viewName = button.dataset.view;
-
                 if (viewName) {
                     showView(viewName);
                 }
             });
+        });
+
+        // Tecla Escape para fechar sidebar
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && sidebar) {
+                if (window.innerWidth <= 768) {
+                    sidebar.classList.remove('mobile-open');
+                    if (sidebarToggle) {
+                        sidebarToggle.setAttribute('aria-expanded', 'false');
+                    }
+                }
+            }
+        });
+
+        // Resetar sidebar em resize
+        window.addEventListener('resize', () => {
+            if (window.innerWidth > 768) {
+                sidebar.classList.remove('mobile-open');
+                sidebar.classList.remove('collapsed');
+                appLayout.classList.remove('sidebar-collapsed');
+                sidebarCollapsed = false;
+                if (sidebarToggle) {
+                    sidebarToggle.setAttribute('aria-expanded', 'true');
+                }
+            }
         });
     </script>
 </body>

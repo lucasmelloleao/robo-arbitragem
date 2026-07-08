@@ -1,8 +1,8 @@
 // Configuração da API do backend
 // Pode ser sobrescrita via variável de ambiente VITE_API_URL ou localStorage
 
-const API_URL = 'http://136.118.82.39:8081'
-//const API_URL = 'http://localhost:8081'
+//const API_URL = 'http://136.118.82.39:8081'
+const API_URL = 'http://localhost:8081'
    
 
 /*

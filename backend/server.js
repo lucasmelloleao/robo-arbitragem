@@ -5,6 +5,7 @@ const { WebSocketServer } = require('ws');
 
 const { createArbitrageService } = require('./src/arbitrage-service');
 const { createMarketMakingService } = require('./src/market-making-service');
+const crossMarketService = require('./src/cross-market-service');
 const { connect: connectDatabase } = require('./src/database');
 const { sendJson, sendNoContent } = require('./src/http-utils');
 const { normalizeExchangeId: normalizeSupportedExchangeId } = require('./src/exchange-credentials');

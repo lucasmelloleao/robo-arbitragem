@@ -3,7 +3,8 @@ import {
     exchangeUsesPassphrase,
     escapeHtml,
     fetchJson,
-    formatDateTime
+    formatDateTime,
+    showToast
 } from './shared.js';
 
 export function initManagementPage() {
@@ -221,6 +222,7 @@ export function initManagementPage() {
             if (userCountLabel) {
                 userCountLabel.textContent = 'Falha ao carregar usuários';
             }
+            showToast(`Erro ao carregar usuários: ${error.message}`, 'error');
         }
     }
 
@@ -234,9 +236,10 @@ export function initManagementPage() {
                 body: JSON.stringify({ stopTrader })
             });
 
+            showToast(`Usuário ${stopTrader ? 'pausado' : 'ativado'} com sucesso!`, 'success');
             await loadUsers();
         } catch (error) {
-            window.alert(`Erro ao atualizar usuário: ${error.message}`);
+            showToast(`Erro ao atualizar usuário: ${error.message}`, 'error');
         }
     }
 
@@ -341,6 +344,7 @@ export function initManagementPage() {
         } catch (error) {
             exchangeList.innerHTML = `<div class="empty">Erro ao carregar corretoras: ${escapeHtml(error.message)}</div>`;
             renderExchangeSummary([]);
+            showToast(`Erro ao carregar corretoras: ${error.message}`, 'error');
         }
     }
 
@@ -360,7 +364,6 @@ export function initManagementPage() {
             assetsMode: assetsModeValue.trim().toLowerCase(),
             active: exchangeForm.elements.active.checked
         };
-        console.log(`[management] assetsMode selecionado: ${payload.assetsMode}`);
 
         function processConfig(prefix, form) {
             const config = {};
@@ -377,9 +380,9 @@ export function initManagementPage() {
                 if (element.type === 'checkbox') {
                     value = element.checked;
                 } else if (element.type === 'number') {
-                    value = element.value.trim() === '' ? undefined : Number(element.value);
+                    value = element.value.trim() === '' ? null : Number(element.value);
                 } else {
-                    value = element.value.trim() === '' ? undefined : element.value.trim();
+                    value = element.value.trim() === '' ? null : element.value.trim();
                 }
 
                 if (value !== undefined) {
@@ -390,11 +393,19 @@ export function initManagementPage() {
             return hasValue ? config : null;
         }
 
-        const arbitrageConfig = processConfig('arbitrageConfig.', exchangeForm);
-        if (arbitrageConfig) payload.arbitrageConfig = arbitrageConfig;
+        const existingExchange = editingExchangeId ? cachedExchanges.find(ex => ex._id === editingExchangeId) : null;
 
-        const marketMakingConfig = processConfig('marketMakingConfig.', exchangeForm);
-        if (marketMakingConfig) payload.marketMakingConfig = marketMakingConfig;
+        const newArbitrageConfig = processConfig('arbitrageConfig.', exchangeForm);
+        if (newArbitrageConfig) {
+            const existingArbitrageConfig = existingExchange?.arbitrageConfig || {};
+            payload.arbitrageConfig = { ...existingArbitrageConfig, ...newArbitrageConfig };
+        }
+
+        const newMarketMakingConfig = processConfig('marketMakingConfig.', exchangeForm);
+        if (newMarketMakingConfig) {
+            const existingMarketMakingConfig = existingExchange?.marketMakingConfig || {};
+            payload.marketMakingConfig = { ...existingMarketMakingConfig, ...newMarketMakingConfig };
+        }
 
         if (!payload.name || !payload.acronym) {
             exchangeFormFeedback.textContent = 'Nome e sigla são obrigatórios.';
@@ -440,6 +451,7 @@ export function initManagementPage() {
 
             exchangeFormFeedback.textContent = editingExchangeId ? 'Corretora atualizada com sucesso.' : 'Corretora criada com sucesso.';
             exchangeFormFeedback.classList.add('success');
+            showToast(editingExchangeId ? 'Corretora atualizada com sucesso!' : 'Corretora criada com sucesso!', 'success');
             await loadExchanges();
 
             window.setTimeout(() => {
@@ -448,29 +460,40 @@ export function initManagementPage() {
         } catch (error) {
             exchangeFormFeedback.textContent = error.message;
             exchangeFormFeedback.classList.remove('success');
+            showToast(error.message, 'error');
         } finally {
             exchangeFormSubmit.disabled = false;
         }
     }
 
     async function toggleExchangeStatus(exchangeId) {
-        await fetchJson(buildApiUrl(`exchanges/${encodeURIComponent(exchangeId)}/toggle`), {
-            method: 'PATCH'
-        });
+        try {
+            await fetchJson(buildApiUrl(`exchanges/${encodeURIComponent(exchangeId)}/toggle`), {
+                method: 'PATCH'
+            });
 
-        await loadExchanges();
+            showToast('Status da corretora alterado com sucesso!', 'success');
+            await loadExchanges();
+        } catch (error) {
+            showToast(`Erro ao alterar status: ${error.message}`, 'error');
+        }
     }
 
     async function deleteExchangeRecord(exchangeId) {
-        await fetchJson(buildApiUrl(`exchanges/${encodeURIComponent(exchangeId)}`), {
-            method: 'DELETE'
-        });
+        try {
+            await fetchJson(buildApiUrl(`exchanges/${encodeURIComponent(exchangeId)}`), {
+                method: 'DELETE'
+            });
 
-        if (editingExchangeId === exchangeId) {
-            hideExchangeForm();
+            if (editingExchangeId === exchangeId) {
+                hideExchangeForm();
+            }
+
+            showToast('Corretora excluída com sucesso!', 'success');
+            await loadExchanges();
+        } catch (error) {
+            showToast(`Erro ao excluir corretora: ${error.message}`, 'error');
         }
-
-        await loadExchanges();
     }
 
     if (btnShowUserForm && userFormContainer) {
@@ -526,6 +549,7 @@ export function initManagementPage() {
 
                 userFormFeedback.textContent = 'Usuário criado com sucesso!';
                 userFormFeedback.classList.add('success');
+                showToast('Usuário criado com sucesso!', 'success');
                 await loadUsers();
 
                 window.setTimeout(() => {
@@ -534,6 +558,7 @@ export function initManagementPage() {
             } catch (error) {
                 userFormFeedback.textContent = error.message;
                 userFormFeedback.classList.remove('success');
+                showToast(error.message, 'error');
             }
         });
     }
@@ -599,6 +624,7 @@ export function initManagementPage() {
             } catch (error) {
                 exchangeFormFeedback.textContent = error.message;
                 exchangeFormFeedback.classList.remove('success');
+                showToast(error.message, 'error');
             } finally {
                 button.disabled = false;
             }

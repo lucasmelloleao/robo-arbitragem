@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Cross-Market Strategy - ArbTrade">
+    <meta name="theme-color" content="#0d1117">
+    <title>Cross-Market Strategy - ArbTrade</title>
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+        .cm-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: var(--space-6);
+        }
+        .cm-full {
+            grid-column: 1 / -1;
+        }
+        .cm-strategy-card {
+            padding: var(--space-5) var(--space-6);
+            border-radius: var(--radius-2xl);
+            background: var(--bg-card);
+            border: 1px solid var(--border-card);
+            display: grid;
+            gap: var(--space-3);
+            transition: background var(--transition-base), border-color var(--transition-base);
+        }
+        .cm-strategy-card:hover {
+            background: var(--bg-card-hover);
+            border-color: var(--border-subtle);
+        }
+        .cm-strategy-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: var(--space-3);
+        }
+        .cm-strategy-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin: 0;
+        }
+        .cm-strategy-meta {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: var(--space-2);
+            font-size: 0.88rem;
+            color: var(--text-secondary);
+        }
+        .cm-strategy-meta strong {
+            color: var(--text-primary);
+        }
+        .cm-scan-result {
+            padding: var(--space-4);
+            border-radius: var(--radius-lg);
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-card);
+            font-size: 0.88rem;
+        }
+        .cm-opportunity {
+            border-color: rgba(125, 249, 193, 0.4);
+            background: rgba(125, 249, 193, 0.06);
+        }
+        .cm-error {
+            border-color: rgba(255, 107, 122, 0.4);
+            background: rgba(255, 107, 122, 0.06);
+        }
+        .cm-price {
+            font-family: var(--font-mono);
+            font-size: 0.95rem;
+        }
+        .cm-actions {
+            display: flex;
+            gap: var(--space-2);
+            flex-wrap: wrap;
+        }
+        .cm-actions button {
+            font-size: 0.82rem;
+            padding: 6px 14px;
+        }
+        .cm-status-bar {
+            display: flex;
+            gap: var(--space-4);
+            flex-wrap: wrap;
+            align-items: center;
+            padding: var(--space-4) var(--space-5);
+            border-radius: var(--radius-xl);
+            background: var(--bg-card);
+            border: 1px solid var(--border-card);
+        }
+        .cm-status-item {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            font-size: 0.88rem;
+            color: var(--text-secondary);
+        }
+        .cm-status-item strong {
+            color: var(--text-primary);
+        }
+        @media (max-width: 768px) {
+            .cm-grid {
+                grid-template-columns: 1fr;
+            }
+            .cm-strategy-meta {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Toast Container -->
+    <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+    <!-- Conteúdo Principal -->
+    <main class="main-content" role="main">
+        <div class="shell">
+                <!-- Hero -->
+                <section class="hero">
+                    <div class="hero-top">
+                        <div>
+                            <div class="eyebrow">Estratégia</div>
+                            <h1>Cross-Market</h1>
+                        </div>
+                        <div class="hero-status-group">
+                            <div class="status-pill" id="cm-status-pill">
+                                <span class="status-dot" id="cm-status-dot"></span>
+                                <span id="cm-status-label">Inicializando...</span>
+                            </div>
+                        </div>
+                    </div>
+                    <p>Monitora diferenças de preço de um mesmo par entre duas corretoras diferentes. Compra na mais barata e vende na mais cara.</p>
+                    <div class="actions">
+                        <button class="primary" id="btn-new-strategy" type="button">Nova Estratégia</button>
+                        <button class="secondary" id="btn-refresh-status" type="button">Atualizar Status</button>
+                    </div>
+                    <span id="cm-feedback" class="mono hero-feedback" role="status" aria-live="polite"></span>
+                </section>
+
+                <!-- Status Bar -->
+                <div class="cm-status-bar" id="cm-status-bar">
+                    <div class="cm-status-item">
+                        <span>Estratégias ativas:</span>
+                        <strong id="cm-active-count">0</strong>
+                    </div>
+                    <div class="cm-status-item">
+                        <span>Scans rodando:</span>
+                        <strong id="cm-running-count">0</strong>
+                    </div>
+                </div>
+
+                <!-- Formulário -->
+                <div class="form-shell" id="cm-form-container" style="display: none;">
+                    <form id="cm-form" class="data-form">
+                        <div class="form-header">
+                            <h3 id="cm-form-title">Nova Estratégia Cross-Market</h3>
+                            <p id="cm-form-hint">Configure os pares de corretoras e moedas para monitorar.</p>
+                        </div>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="cm-name">Nome da Estratégia *</label>
+                                <input type="text" id="cm-name" name="name" required placeholder="Ex: BTC-USDT Binance vs Kraken">
+                            </div>
+                            <div class="form-group">
+                                <label for="cm-exchange1">Corretora 1 *</label>
+                                <select id="cm-exchange1" name="exchange1" required>
+                                    <option value="">Selecione...</option>
+                                    <option value="BINANCE">Binance</option>
+                                    <option value="KRAKEN">Kraken</option>
+                                    <option value="BYBIT">Bybit</option>
+                                    <option value="MEXC">MEXC</option>
+                                    <option value="COINBASE">Coinbase</option>
+                                    <option value="GATEIO">Gate.io</option>
+                                    <option value="OKX">OKX</option>
+                                    <option value="WOO">WOOX</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="cm-exchange2">Corretora 2 *</label>
+                                <select id="cm-exchange2" name="exchange2" required>
+                                    <option value="">Selecione...</option>
+                                    <option value="BINANCE">Binance</option>
+                                    <option value="KRAKEN">Kraken</option>
+                                    <option value="BYBIT">Bybit</option>
+                                    <option value="MEXC">MEXC</option>
+                                    <option value="COINBASE">Coinbase</option>
+                                    <option value="GATEIO">Gate.io</option>
+                                    <option value="OKX">OKX</option>
+                                    <option value="WOO">WOOX</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="cm-asset1">Moeda 1 (Base) *</label>
+                                <input type="text" id="cm-asset1" name="asset1" required placeholder="Ex: BTC" maxlength="10">
+                            </div>
+                            <div class="form-group">
+                                <label for="cm-asset2">Moeda 2 (Quote) *</label>
+                                <input type="text" id="cm-asset2" name="asset2" required placeholder="Ex: USDT" maxlength="10">
+                            </div>
+                            <div class="form-group">
+                                <label for="cm-amount">Valor de Operação *</label>
+                                <input type="number" id="cm-amount" name="operationAmount" required step="0.0001" min="0.0001" placeholder="Ex: 1000">
+                            </div>
+                            <div class="form-group">
+                                <label for="cm-min-spread">Spread Mínimo (%)</label>
+                                <input type="number" id="cm-min-spread" name="minSpreadPercent" step="0.01" min="0" value="0.1" placeholder="0.1">
+                            </div>
+                            <div class="form-group">
+                                <label for="cm-fee">Taxa de Trading (%)</label>
+                                <input type="number" id="cm-fee" name="tradingFeePercent" step="0.01" min="0" value="0.1" placeholder="0.1">
+                            </div>
+                            <div class="form-group">
+                                <label for="cm-interval">Intervalo de Scan (ms)</label>
+                                <input type="number" id="cm-interval" name="scanIntervalMs" step="1000" min="1000" value="5000" placeholder="5000">
+                            </div>
+                            <div class="form-group form-group-wide">
+                                <label class="toggle-field" for="cm-live">
+                                    <input type="checkbox" id="cm-live" name="enableLiveTrading">
+                                    <span>Live Trading</span>
+                                </label>
+                            </div>
+                            <div class="form-group form-group-wide">
+                                <label for="cm-notes">Observações</label>
+                                <textarea id="cm-notes" name="notes" rows="2" placeholder="Anotações sobre a estratégia..."></textarea>
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="primary" id="cm-form-submit">Salvar Estratégia</button>
+                            <button type="button" class="secondary" id="cm-form-cancel">Cancelar</button>
+                        </div>
+                        <div id="cm-form-feedback" class="mono form-feedback" role="status" aria-live="polite"></div>
+                    </form>
+                </div>
+
+                <!-- Lista de Estratégias -->
+                <section class="workspace-section" aria-label="Estratégias Cross-Market">
+                    <div class="section-heading">
+                        <div>
+                            <div class="eyebrow">Estratégias</div>
+                            <h2>Cross-Market</h2>
+                        </div>
+                        <p>Estratégias cadastradas para monitoramento de arbitragem entre corretoras.</p>
+                    </div>
+                    <div id="cm-strategies-list" class="cm-grid" aria-label="Lista de estratégias">
+                        <div class="empty cm-full">Carregando estratégias...</div>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+    <script src="/js/config.js"></script>
+    <script>
+        'use strict';
+
+        // ===== Toast =====
+        function showToast(message, type, duration) {
+            type = type || 'info';
+            duration = duration || 4000;
+            var container = document.getElementById('toast-container');
+            if (!container) return;
+            var icons = { success: '\u2705', error: '\u274C', warning: '\u26A0\uFE0F', info: '\u2139\uFE0F' };
+            var toast = document.createElement('div');
+            toast.className = 'toast toast-' + type;
+            toast.setAttribute('role', 'alert');
+            toast.innerHTML = '<span class="toast-icon" aria-hidden="true">' + (icons[type] || icons.info) + '</span><span class="toast-message">' + message + '</span>';
+            container.appendChild(toast);
+            setTimeout(function() {
+                toast.classList.add('toast-out');
+                setTimeout(function() { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 300);
+            }, duration);
+        }
+
+        // ===== API Helper =====
+        function apiUrl(path) {
+            var base = window.API_URL || '';
+            return base ? base + '/api/' + path : '/api/' + path;
+        }
+
+        async function apiFetch(path, options) {
+            options = options || {};
+            var url = apiUrl(path);
+            var response = await fetch(url, options);
+            var data = await response.json().catch(function() { return {}; });
+            if (!response.ok) throw new Error(data.error || 'Erro na requisi\u00e7\u00e3o');
+            return data;
+        }
+
+        // ===== State =====
+        var editingId = null;
+        var strategies = [];
+        var scanResults = {};
+
+        // ===== DOM Elements =====
+        var formContainer = document.getElementById('cm-form-container');
+        var form = document.getElementById('cm-form');
+        var formTitle = document.getElementById('cm-form-title');
+        var formHint = document.getElementById('cm-form-hint');
+        var formSubmit = document.getElementById('cm-form-submit');
+        var formFeedback = document.getElementById('cm-form-feedback');
+        var btnNew = document.getElementById('btn-new-strategy');
+        var btnCancel = document.getElementById('cm-form-cancel');
+        var btnRefresh = document.getElementById('cm-refresh-status');
+        var strategiesList = document.getElementById('cm-strategies-list');
+        var feedback = document.getElementById('cm-feedback');
+        var activeCount = document.getElementById('cm-active-count');
+        var runningCount = document.getElementById('cm-running-count');
+        var statusDot = document.getElementById('cm-status-dot');
+        var statusLabel = document.getElementById('cm-status-label');
+
+        // ===== Form =====
+        function resetForm() {
+            if (form) form.reset();
+            if (formFeedback) { formFeedback.textContent = ''; formFeedback.className = 'mono form-feedback'; }
+            if (formSubmit) formSubmit.textContent = 'Salvar Estrat\u00e7\u00e3o';
+            if (formTitle) formTitle.textContent = 'Nova Estrat\u00e9gia Cross-Market';
+            if (formHint) formHint.textContent = 'Configure os pares de corretoras e moedas para monitorar.';
+            editingId = null;
+        }
+
+        function showForm() {
+            if (formContainer) formContainer.style.display = 'block';
+        }
+
+        function hideForm() {
+            if (formContainer) formContainer.style.display = 'none';
+            resetForm();
+        }
+
+        if (btnNew) {
+            btnNew.addEventListener('click', function() {
+                if (formContainer && formContainer.style.display === 'none') {
+                    showForm();
+                } else {
+                    hideForm();
+                }
+            });
+        }
+
+        if (btnCancel) {
+            btnCancel.addEventListener('click', hideForm);
+        }
+
+        // ===== Submit =====
+        if (form) {
+            form.addEventListener('submit', async function(event) {
+                event.preventDefault();
+
+                var fd = new FormData(form);
+                var data = {
+                    name: fd.get('name')?.trim(),
+                    exchange1: fd.get('exchange1')?.trim(),
+                    exchange2: fd.get('exchange2')?.trim(),
+                    asset1: fd.get('asset1')?.trim().toUpperCase(),
+                    asset2: fd.get('asset2')?.trim().toUpperCase(),
+                    operationAmount: parseFloat(fd.get('operationAmount')),
+                    minSpreadPercent: parseFloat(fd.get('minSpreadPercent')) || 0.1,
+                    tradingFeePercent: parseFloat(fd.get('tradingFeePercent')) || 0.1,
+                    scanIntervalMs: parseInt(fd.get('scanIntervalMs')) || 5000,
+                    enableLiveTrading: fd.get('enableLiveTrading') === 'on',
+                    notes: fd.get('notes')?.trim() || ''
+                };
+
+                if (!data.name || !data.exchange1 || !data.exchange2 || !data.asset1 || !data.asset2 || !data.operationAmount) {
+                    formFeedback.textContent = 'Preencha todos os campos obrigat\u00f3rios.';
+                    formFeedback.className = 'mono form-feedback';
+                    return;
+                }
+
+                if (data.exchange1 === data.exchange2) {
+                    formFeedback.textContent = 'As corretoras 1 e 2 devem ser diferentes.';
+                    formFeedback.className = 'mono form-feedback';
+                    return;
+                }
+
+                formFeedback.textContent = 'Salvando...';
+                formFeedback.className = 'mono form-feedback';
+                formSubmit.disabled = true;
+
+                try {
+                    var method = editingId ? 'PUT' : 'POST';
+                    var path = editingId ? 'cross-market/' + encodeURIComponent(editingId) : 'cross-market';
+
+                    await apiFetch(path, {
+                        method: method,
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+
+                    showToast(editingId ? 'Estrat\u00e9gia atualizada!' : 'Estrat\u00e9gia criada!', 'success');
+                    hideForm();
+                    await loadStrategies();
+                    await loadStatus();
+                } catch (error) {
+                    formFeedback.textContent = error.message;
+                    formFeedback.className = 'mono form-feedback';
+                    showToast(error.message, 'error');
+                } finally {
+                    formSubmit.disabled = false;
+                }
+            });
+        }
+
+        // ===== Load Strategies =====
+        async function loadStrategies() {
+            try {
+                var result = await apiFetch('cross-market');
+                strategies = Array.isArray(result.strategies) ? result.strategies : [];
+                renderStrategies();
+            } catch (error) {
+                strategiesList.innerHTML = '<div class="empty cm-full">Erro ao carregar: ' + error.message + '</div>';
+                showToast(error.message, 'error');
+            }
+        }
+
+        function renderStrategies() {
+            if (strategies.length === 0) {
+                strategiesList.innerHTML = '<div class="empty cm-full">Nenhuma estrat\u00e9gia cadastrada. Crie uma nova para come\u00e7ar.</div>';
+                return;
+            }
+
+            strategiesList.innerHTML = strategies.map(function(s) {
+                var scan = scanResults[s._id] || null;
+                var scanHtml = '';
+
+                if (scan) {
+                    if (scan.error) {
+                        scanHtml = '<div class="cm-scan-result cm-error">\u26A0\uFE0F ' + scan.error + '</div>';
+                    } else if (scan.hasOpportunity) {
+                        scanHtml = '<div class="cm-scan-result cm-opportunity">' +
+                            '\u2705 <strong>OPORTUNIDADE!</strong> ' + scan.action + '<br>' +
+                            '<span class="cm-price">Spread: ' + (scan.spreadPercent || 0).toFixed(4) + '% | ' +
+                            'Lucro: ' + (scan.estimatedProfitPercent || 0).toFixed(4) + '% (' + (scan.estimatedProfit || 0).toFixed(4) + ')</span>' +
+                            '</div>';
+                    } else {
+                        scanHtml = '<div class="cm-scan-result">' +
+                            '\u2139\uFE0F Spread: ' + (scan.spreadPercent || 0).toFixed(4) + '% | ' +
+                            '<span class="cm-price">' + s.exchange1 + ': ' + (scan.price1 || '--') + ' | ' +
+                            s.exchange2 + ': ' + (scan.price2 || '--') + '</span>' +
+                            '</div>';
+                    }
+                }
+
+                return '<div class="cm-strategy-card" style="' + (s.active ? '' : 'opacity: 0.6;') + '">' +
+                    '<div class="cm-strategy-header">' +
+                    '<h3 class="cm-strategy-title">' + escapeHtml(s.name) + '</h3>' +
+                    '<span class="badge ' + (s.active ? 'badge-active' : 'badge-inactive') + '">' +
+                    (s.active ? 'Ativa' : 'Inativa') + '</span>' +
+                    '</div>' +
+                    '<div class="cm-strategy-meta">' +
+                    '<div><strong>' + escapeHtml(s.exchange1) + '</strong> vs <strong>' + escapeHtml(s.exchange2) + '</strong></div>' +
+                    '<div><strong>' + escapeHtml(s.asset1) + '/' + escapeHtml(s.asset2) + '</strong></div>' +
+                    '<div>Valor: <strong>' + (s.operationAmount || 0).toFixed(4) + '</strong></div>' +
+                    '<div>Intervalo: <strong>' + (s.scanIntervalMs || 5000) + 'ms</strong></div>' +
+                    '</div>' +
+                    scanHtml +
+                    '<div class="cm-actions">' +
+                    '<button class="secondary" onclick="editStrategy(\'' + s._id + '\')">Editar</button>' +
+                    '<button class="secondary" onclick="toggleStrategy(\'' + s._id + '\')">' + (s.active ? 'Desativar' : 'Ativar') + '</button>' +
+                    '<button class="secondary" onclick="runScan(\'' + s._id + '\')">Executar Scan</button>' +
+                    '<button class="secondary button-danger" onclick="deleteStrategy(\'' + s._id + '\')">Excluir</button>' +
+                    '</div>' +
+                    '</div>';
+            }).join('');
+        }
+
+        // ===== Actions =====
+        async function editStrategy(id) {
+            var s = strategies.find(function(x) { return x._id === id; });
+            if (!s) return;
+
+            editingId = id;
+            document.getElementById('cm-name').value = s.name || '';
+            document.getElementById('cm-exchange1').value = s.exchange1 || '';
+            document.getElementById('cm-exchange2').value = s.exchange2 || '';
+            document.getElementById('cm-asset1').value = s.asset1 || '';
+            document.getElementById('cm-asset2').value = s.asset2 || '';
+            document.getElementById('cm-amount').value = s.operationAmount || '';
+            document.getElementById('cm-min-spread').value = s.minSpreadPercent || 0.1;
+            document.getElementById('cm-fee').value = s.tradingFeePercent || 0.1;
+            document.getElementById('cm-interval').value = s.scanIntervalMs || 5000;
+            document.getElementById('cm-live').checked = s.enableLiveTrading || false;
+            document.getElementById('cm-notes').value = s.notes || '';
+
+            formTitle.textContent = 'Editar ' + s.name;
+            formHint.textContent = 'Atualize os par\u00e2metros da estrat\u00e9gia.';
+            formSubmit.textContent = 'Salvar Altera\u00e7\u00f5es';
+            showForm();
+        }
+
+        async function toggleStrategy(id) {
+            try {
+                await apiFetch('cross-market/' + encodeURIComponent(id) + '/toggle', { method: 'PATCH' });
+                showToast('Status alterado!', 'success');
+                await loadStrategies();
+                await loadStatus();
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        }
+
+        async function deleteStrategy(id) {
+            if (!confirm('Excluir esta estrat\u00e9gia?')) return;
+            try {
+                await apiFetch('cross-market/' + encodeURIComponent(id), { method: 'DELETE' });
+                showToast('Estrat\u00e9gia exclu\u00edda!', 'success');
+                await loadStrategies();
+                await loadStatus();
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        }
+
+        async function runScan(id) {
+            try {
+                var result = await apiFetch('cross-market/' + encodeURIComponent(id) + '/scan');
+                if (result.scan) {
+                    scanResults[id] = result.scan;
+                    renderStrategies();
+                    if (result.scan.hasOpportunity) {
+                        showToast('Oportunidade encontrada!', 'success');
+                    }
+                }
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        }
+
+        // ===== Load Status =====
+        async function loadStatus() {
+            try {
+                var result = await apiFetch('cross-market/status');
+                var status = result.status || {};
+                activeCount.textContent = status.activeStrategies || 0;
+                runningCount.textContent = status.runningScans || 0;
+
+                if (status.activeStrategies > 0) {
+                    statusDot.style.background = 'var(--accent)';
+                    statusDot.style.boxShadow = 'var(--shadow-glow-accent)';
+                    statusLabel.textContent = status.activeStrategies + ' estrat\u00e9gia(s) ativa(s)';
+                } else {
+                    statusDot.style.background = 'var(--warn)';
+                    statusDot.style.boxShadow = 'var(--shadow-glow-warn)';
+                    statusLabel.textContent = 'Nenhuma estrat\u00e9gia ativa';
+                }
+            } catch (error) {
+                statusDot.style.background = 'var(--danger)';
+                statusDot.style.boxShadow = 'var(--shadow-glow-danger)';
+                statusLabel.textContent = 'Erro ao carregar status';
+            }
+        }
+
+        // ===== Refresh =====
+        if (btnRefresh) {
+            btnRefresh.addEventListener('click', function() {
+                loadStatus();
+                loadStrategies();
+            });
+        }
+
+        // ===== Escape HTML =====
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, function(m) {
+                if (m === '&') return String.fromCharCode(38) + 'amp;';
+                if (m === '<') return String.fromCharCode(38) + 'lt;';
+                if (m === '>') return String.fromCharCode(38) + 'gt;';
+                if (m === '"') return String.fromCharCode(38) + 'quot;';
+                if (m === "'") return String.fromCharCode(38) + '#39;';
+                return m;
+            });
+        }
+
+        // ===== Sidebar Toggle =====
+        var sidebarToggle = document.getElementById('sidebar-toggle');
+        var sidebar = document.getElementById('sidebar');
+        var appLayout = document.querySelector('.app-layout');
+
+        if (sidebarToggle) {
+            sidebarToggle.addEventListener('click', function() {
+                if (window.innerWidth <= 768) {
+                    sidebar.classList.toggle('mobile-open');
+                } else {
+                    appLayout.classList.toggle('sidebar-collapsed');
+                }
+            });
+        }
+
+        // ===== Init =====
+        loadStatus();
+        loadStrategies();
+    </script>
+</body>
+</html>
