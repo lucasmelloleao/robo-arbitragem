@@ -58,6 +58,10 @@
                         <span class="nav-icon" aria-hidden="true">💰</span>
                         <span>Saldos</span>
                     </button>
+                    <button class="nav-item" data-view="cross-market-trades" type="button">
+                        <span class="nav-icon" aria-hidden="true">📋</span>
+                        <span>Operações</span>
+                    </button>
                 </div>
                 <div class="nav-section" role="separator">
                     <div class="nav-section-title">Cadastro</div>
@@ -314,6 +318,11 @@
             <section id="view-cross-market-balances" class="view-section" aria-label="Workspace de Cross Market Balances">
                 <iframe src="/cross-market-balances.html" class="iframe-shell" title="Saldos Cross Market" loading="lazy"></iframe>
             </section>
+
+            <!-- Cross Market Trades -->
+            <section id="view-cross-market-trades" class="view-section" aria-label="Workspace de Cross Market Trades">
+                <iframe src="/cross-market-trades.html" class="iframe-shell" title="Operações Cross Market" loading="lazy"></iframe>
+            </section>
         </main>
 
         <!-- Footer -->
@@ -426,7 +435,7 @@
                 }
             }
 
-            if (viewName === 'arbitrage' || viewName === 'market-making' || viewName === 'cross-market' || viewName === 'cross-market-execution' || viewName === 'cross-market-balances') {
+            if (viewName === 'arbitrage' || viewName === 'market-making' || viewName === 'cross-market' || viewName === 'cross-market-execution' || viewName === 'cross-market-balances' || viewName === 'cross-market-trades') {
                 window.setTimeout(() => {
                     const app = window.app;
 
@@ -472,10 +481,27 @@
             sidebarToggle.addEventListener('click', toggleSidebar);
         }
 
+        function navigateTo(viewName) {
+            const path = viewName === 'home' ? '/' : `/${viewName}`;
+            history.pushState({ viewName }, '', path);
+            showView(viewName);
+        }
+
+        function handleRouting() {
+            let path = window.location.pathname.substring(1);
+            if (!path || path === '') {
+                path = 'home';
+            }
+            showView(path);
+        }
+
+        window.addEventListener('popstate', handleRouting);
+        window.addEventListener('load', handleRouting);
+
         navItems.forEach((item) => {
             item.addEventListener('click', () => {
                 const viewName = item.dataset.view;
-                showView(viewName);
+                navigateTo(viewName);
             });
         });
 
@@ -483,7 +509,7 @@
             button.addEventListener('click', () => {
                 const viewName = button.dataset.view;
                 if (viewName) {
-                    showView(viewName);
+                    navigateTo(viewName);
                 }
             });
         });

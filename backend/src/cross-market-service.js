@@ -9,7 +9,7 @@
  */
 
 const ccxt = require('ccxt');
-const { getExchangeCredentialsByAcronym } = require('./database');
+const { getExchangeCredentialsByAcronym, createCrossMarketTrade } = require('./database');
 
 // Cache de configurações para evitar consultas repetidas ao banco
 let cachedStrategies = [];
@@ -259,9 +259,86 @@ async function fetchTickerPrice(exchangeAcronym, asset1, asset2) {
 /**
  * Executa a operação de compra e venda em modo live.
  */
+async function saveTradeToDb({
+    strategy,
+    status,
+    errorMessage = null,
+    buyExchange,
+    sellExchange,
+    buyPrice,
+    sellPrice,
+    buyAmount,
+    sellAmount,
+    quoteAmount,
+    buyOrder = null,
+    sellOrder = null
+}) {
+    try {
+        const getOrderFee = (order) => {
+            if (order && order.fee) {
+                return {
+                    cost: typeof order.fee.cost === 'number' ? order.fee.cost : 0,
+                    currency: order.fee.currency || ''
+                };
+            }
+            return { cost: 0, currency: '' };
+        };
+
+        const higherPrice = Math.max(buyPrice, sellPrice);
+        const lowerPrice = Math.min(buyPrice, sellPrice);
+        const spreadVal = higherPrice - lowerPrice;
+        const midPrice = (buyPrice + sellPrice) / 2;
+        const currentSpreadPercent = midPrice > 0 ? (spreadVal / midPrice) * 100 : 0;
+        const tradingFee = strategy.tradingFeePercent || 0.1;
+        const netSpread = currentSpreadPercent - tradingFee;
+        const estimatedProfit = (quoteAmount * netSpread) / 100;
+
+        await createCrossMarketTrade({
+            userId: strategy.userId,
+            strategyId: strategy._id,
+            strategyName: strategy.name,
+            buyExchange,
+            sellExchange,
+            quoteAsset: strategy.asset1,
+            baseAsset: strategy.asset2,
+            buyPrice,
+            sellPrice,
+            buyAmount: parseFloat(buyAmount) || 0,
+            sellAmount: parseFloat(sellAmount) || 0,
+            quoteAmount,
+            spreadPercent: currentSpreadPercent,
+            estimatedProfit,
+            estimatedProfitPercent: netSpread,
+            buyOrderId: buyOrder ? buyOrder.id : null,
+            sellOrderId: sellOrder ? sellOrder.id : null,
+            buyOrderFee: getOrderFee(buyOrder),
+            sellOrderFee: getOrderFee(sellOrder),
+            status,
+            errorMessage,
+            rawBuyOrder: buyOrder,
+            rawSellOrder: sellOrder
+        });
+        
+        log('info', 'Operacao gravada no banco de dados', {
+            strategy: strategy.name,
+            status
+        }, strategy._id);
+    } catch (dbErr) {
+        log('error', 'Falha ao gravar operacao no banco de dados', {
+            strategy: strategy.name,
+            error: dbErr.message
+        }, strategy._id);
+    }
+}
+
+/**
+ * Executa a operação de compra e venda em modo live.
+ */
 async function executeCrossMarketTrade(strategy, buyExchange, sellExchange, buyPrice, sellPrice) {
     const symbol = `${strategy.asset2}/${strategy.asset1}`;
     const quoteAmount = strategy.operationAmount; // Valor em moeda de cotação (ex: 10 USDT)
+    let buyAmountFormatted = '0';
+    let sellAmountFormatted = '0';
 
     try {
         // 1. Obter instâncias autenticadas e carregar mercados para obter regras de precisão
@@ -274,8 +351,8 @@ async function executeCrossMarketTrade(strategy, buyExchange, sellExchange, buyP
 
         // Calcula a quantidade da moeda base (ex: HYPE) e formata com a precisão de cada exchange
         const rawBaseAmount = quoteAmount / buyPrice;
-        let buyAmountFormatted = buyInstance.amountToPrecision(symbol, rawBaseAmount);
-        let sellAmountFormatted = sellInstance.amountToPrecision(symbol, rawBaseAmount);
+        buyAmountFormatted = buyInstance.amountToPrecision(symbol, rawBaseAmount);
+        sellAmountFormatted = sellInstance.amountToPrecision(symbol, rawBaseAmount);
 
         // FALLBACK: Se o arredondamento zerou a quantidade mas o valor bruto original era maior que zero,
         // força o uso de uma precisão manual (ex: 4 casas decimais) para evitar ordem zerada.
@@ -395,6 +472,20 @@ async function executeCrossMarketTrade(strategy, buyExchange, sellExchange, buyP
                     buyExchange, buyError: buyError.message,
                     sellExchange, sellError: sellError.message
                 }, strategy._id);
+                
+                await saveTradeToDb({
+                    strategy,
+                    status: 'FAILED',
+                    errorMessage: `Falha em ambas as exchanges: Compra(${buyExchange})=${buyError.message} | Venda(${sellExchange})=${sellError.message}`,
+                    buyExchange,
+                    sellExchange,
+                    buyPrice,
+                    sellPrice,
+                    buyAmount: buyAmountFormatted,
+                    sellAmount: sellAmountFormatted,
+                    quoteAmount
+                });
+
                 throw new Error(`Falha em ambas as exchanges: Compra(${buyExchange})=${buyError.message} | Venda(${sellExchange})=${sellError.message}`);
             }
 
@@ -406,6 +497,22 @@ async function executeCrossMarketTrade(strategy, buyExchange, sellExchange, buyP
                         sellOrder,
                         buyError: buyError.message
                     }, strategy._id);
+                    
+                    await saveTradeToDb({
+                        strategy,
+                        status: 'PARTIAL_FAILURE',
+                        errorMessage: `RISCO: Venda em ${sellExchange} OK, mas compra em ${buyExchange} FALHOU: ${buyError.message}`,
+                        buyExchange,
+                        sellExchange,
+                        buyPrice,
+                        sellPrice,
+                        buyAmount: buyAmountFormatted,
+                        sellAmount: sellAmountFormatted,
+                        quoteAmount,
+                        buyOrder: null,
+                        sellOrder
+                    });
+
                     return {
                         success: false,
                         message: `RISCO: Venda em ${sellExchange} OK, mas compra em ${buyExchange} FALHOU: ${buyError.message}`,
@@ -415,6 +522,20 @@ async function executeCrossMarketTrade(strategy, buyExchange, sellExchange, buyP
                 }
                 // Apenas a compra falhou antes de qualquer execução de venda
                 log('error', 'Falha ao executar ordem de COMPRA', { exchange: buyExchange, error: buyError.message }, strategy._id);
+                
+                await saveTradeToDb({
+                    strategy,
+                    status: 'FAILED',
+                    errorMessage: `Falha na ordem de compra em ${buyExchange}: ${buyError.message}`,
+                    buyExchange,
+                    sellExchange,
+                    buyPrice,
+                    sellPrice,
+                    buyAmount: buyAmountFormatted,
+                    sellAmount: sellAmountFormatted,
+                    quoteAmount
+                });
+
                 throw new Error(`Falha na ordem de compra em ${buyExchange}: ${buyError.message}`);
             }
 
@@ -426,6 +547,22 @@ async function executeCrossMarketTrade(strategy, buyExchange, sellExchange, buyP
                         buyOrder,
                         sellError: sellError.message
                     }, strategy._id);
+                    
+                    await saveTradeToDb({
+                        strategy,
+                        status: 'PARTIAL_FAILURE',
+                        errorMessage: `RISCO: Compra em ${buyExchange} OK, mas venda em ${sellExchange} FALHOU: ${sellError.message}`,
+                        buyExchange,
+                        sellExchange,
+                        buyPrice,
+                        sellPrice,
+                        buyAmount: buyAmountFormatted,
+                        sellAmount: sellAmountFormatted,
+                        quoteAmount,
+                        buyOrder,
+                        sellOrder: null
+                    });
+
                     return {
                         success: false,
                         message: `RISCO: Compra em ${buyExchange} OK, mas venda em ${sellExchange} FALHOU: ${sellError.message}`,
@@ -435,12 +572,40 @@ async function executeCrossMarketTrade(strategy, buyExchange, sellExchange, buyP
                 }
                 // Apenas a venda falhou
                 log('error', 'Falha ao executar ordem de VENDA', { exchange: sellExchange, error: sellError.message }, strategy._id);
+                
+                await saveTradeToDb({
+                    strategy,
+                    status: 'FAILED',
+                    errorMessage: `Falha na ordem de venda em ${sellExchange}: ${sellError.message}`,
+                    buyExchange,
+                    sellExchange,
+                    buyPrice,
+                    sellPrice,
+                    buyAmount: buyAmountFormatted,
+                    sellAmount: sellAmountFormatted,
+                    quoteAmount
+                });
+
                 throw new Error(`Falha na ordem de venda em ${sellExchange}: ${sellError.message}`);
             }
         }
 
         log('info', 'Ordem de COMPRA executada', { exchange: buyExchange, orderId: buyOrder.id }, strategy._id);
         log('info', 'Ordem de VENDA executada', { exchange: sellExchange, orderId: sellOrder.id }, strategy._id);
+
+        await saveTradeToDb({
+            strategy,
+            status: 'SUCCESS',
+            buyExchange,
+            sellExchange,
+            buyPrice,
+            sellPrice,
+            buyAmount: buyAmountFormatted,
+            sellAmount: sellAmountFormatted,
+            quoteAmount,
+            buyOrder,
+            sellOrder
+        });
 
         return {
             success: true,
@@ -454,6 +619,20 @@ async function executeCrossMarketTrade(strategy, buyExchange, sellExchange, buyP
             strategy: strategy.name,
             error: error.message
         }, strategy._id);
+        
+        await saveTradeToDb({
+            strategy,
+            status: 'FAILED',
+            errorMessage: error.message,
+            buyExchange,
+            sellExchange,
+            buyPrice,
+            sellPrice,
+            buyAmount: buyAmountFormatted,
+            sellAmount: sellAmountFormatted,
+            quoteAmount
+        });
+
         return {
             success: false,
             message: error.message,

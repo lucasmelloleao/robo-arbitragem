@@ -221,17 +221,38 @@
                 view.lastUpdate.textContent = new Date().toLocaleString();
                 
                 // A API retorna [{exchange, assets}] - extrair os assets da exchange correta
-                const exchangeBalance = balancesData.balances.find(b => b.exchange === exchangeId.toUpperCase());
-                const assets = exchangeBalance ? exchangeBalance.assets : [];
+                const exchangeBalance = balancesData && balancesData.balances
+                    ? balancesData.balances.find(b => b.exchange === exchangeId.toUpperCase())
+                    : null;
+                let assets = (exchangeBalance && Array.isArray(exchangeBalance.assets)) ? exchangeBalance.assets : [];
+                
+                // Filtrar moedas com valor inferior a 0.1 USDT ou sem valor definido (evita lixo/dust de corretoras)
+                assets = assets.filter(asset => asset.valueUsdt !== null && asset.valueUsdt !== undefined && asset.valueUsdt >= 0.1);
                 
                 exchangeAssetsMap.set(exchangeId, assets);
                 calculateTotalUsdt();
 
                 view.totalAssets.textContent = assets.length;
                 renderBalances(view, assets);
-                view.feedback.textContent = 'Saldos atualizados.';
+                
+                // Ocultar a corretora caso não possua nenhum saldo visível (evita poluição na tela)
+                if (assets.length === 0) {
+                    view.root.style.display = 'none';
+                } else {
+                    view.root.style.display = '';
+                }
+                
+                if (exchangeBalance && exchangeBalance.error) {
+                    view.feedback.textContent = `Erro: ${exchangeBalance.error}`;
+                    // Se der erro, mantém visível para que o usuário saiba o motivo da falha
+                    view.root.style.display = '';
+                } else {
+                    view.feedback.textContent = 'Saldos atualizados.';
+                }
             } catch (error) {
                 view.feedback.textContent = error.message;
+                // Em caso de erro de conexão/requisição, mantém visível para exibir o erro
+                view.root.style.display = '';
             } finally {
                 view.refreshButton && (view.refreshButton.disabled = false);
             }

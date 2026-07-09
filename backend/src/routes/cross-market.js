@@ -6,7 +6,9 @@ const {
     createCrossMarketStrategy,
     updateCrossMarketStrategy,
     deleteCrossMarketStrategy,
-    toggleCrossMarketStrategy
+    toggleCrossMarketStrategy,
+    getCrossMarketTrades,
+    getCrossMarketTradesCount
 } = require('../database');
 const crossMarketService = require('../cross-market-service');
 const { verifyToken } = require('../middleware/auth-middleware');
@@ -496,9 +498,86 @@ async function stopAutoExecution({ request, response, params }) {
     }
 }
 
+async function getTradesList({ request, response }) {
+    const decoded = verifyToken(request, response);
+    if (!decoded) return;
+    try {
+        const url = new URL(request.url, `http://${request.headers.host || 'localhost'}`);
+        const limit = parseInt(url.searchParams.get('limit')) || 50;
+        const skip = parseInt(url.searchParams.get('skip')) || 0;
+        const status = url.searchParams.get('status');
+        const strategyId = url.searchParams.get('strategyId');
+
+        const filter = {};
+        if (status) filter.status = status;
+        if (strategyId) filter.strategyId = strategyId;
+
+        const [trades, total] = await Promise.all([
+            getCrossMarketTrades(decoded.id, filter, { limit, skip }),
+            getCrossMarketTradesCount(decoded.id, filter)
+        ]);
+
+        sendJson(response, 200, { trades, total, limit, skip });
+    } catch (error) {
+        sendJson(response, 500, { error: error.message });
+    }
+}
+
+async function getTradesStats({ request, response }) {
+    const decoded = verifyToken(request, response);
+    if (!decoded) return;
+    try {
+        const trades = await getCrossMarketTrades(decoded.id, {}, { limit: 1000 });
+        
+        let totalProfit = 0;
+        let successCount = 0;
+        let partialFailureCount = 0;
+        let failedCount = 0;
+        const profitByCoin = {};
+        const profitByExchange = {};
+        const countByStrategy = {};
+
+        trades.forEach(t => {
+            if (t.status === 'SUCCESS') {
+                successCount++;
+                totalProfit += t.estimatedProfit || 0;
+
+                const coin = t.quoteAsset || 'USDT';
+                profitByCoin[coin] = (profitByCoin[coin] || 0) + (t.estimatedProfit || 0);
+
+                const buyEx = t.buyExchange;
+                const sellEx = t.sellExchange;
+                profitByExchange[buyEx] = (profitByExchange[buyEx] || 0) - (t.estimatedProfit / 2);
+                profitByExchange[sellEx] = (profitByExchange[sellEx] || 0) + (t.estimatedProfit / 2);
+            } else if (t.status === 'PARTIAL_FAILURE') {
+                partialFailureCount++;
+            } else {
+                failedCount++;
+            }
+
+            countByStrategy[t.strategyName] = (countByStrategy[t.strategyName] || 0) + 1;
+        });
+
+        sendJson(response, 200, {
+            totalTrades: trades.length,
+            successCount,
+            partialFailureCount,
+            failedCount,
+            totalProfit,
+            profitByCoin,
+            profitByExchange,
+            countByStrategy
+        });
+    } catch (error) {
+        sendJson(response, 500, { error: error.message });
+    }
+}
+
 function registerCrossMarketRoutes(router) {
     router.register('GET', '/api/cross-market', listStrategies);
     router.register('GET', '/api/cross-market/status', getServiceStatus);
+    router.register('GET', '/api/cross-market/trades', getTradesList);
+    router.register('GET', '/api/cross-market/trades/stats', getTradesStats);
     router.register('GET', '/api/cross-market/:id', getStrategyById);
     router.register('GET', '/api/cross-market/:id/scan', executeScanHandler);
     router.register('GET', '/api/cross-market/:id/execute', executeStrategyById);

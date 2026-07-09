@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const User = require('./models/User');
 const Exchange = require('./models/Exchange');
 const CrossMarket = require('./models/CrossMarket');
+const CrossMarketTrade = require('./models/CrossMarketTrade');
 
 const databaseUri = process.env.MONGODB_URI;
 let isConnected = false;
@@ -311,6 +312,35 @@ async function toggleCrossMarketStrategy(id, userId) {
     return strategy.toObject();
 }
 
+async function createCrossMarketTrade(tradeData) {
+    assertDatabaseAvailable();
+    const trade = new CrossMarketTrade(tradeData);
+    await trade.save();
+    return trade.toObject();
+}
+
+async function getCrossMarketTrades(userId, filter = {}, options = {}) {
+    assertDatabaseAvailable();
+    const queryFilter = { ...filter };
+    if (userId) queryFilter.userId = userId;
+    
+    const limit = parseInt(options.limit) || 100;
+    const skip = parseInt(options.skip) || 0;
+    
+    return CrossMarketTrade.find(queryFilter)
+        .sort({ created_at: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean();
+}
+
+async function getCrossMarketTradesCount(userId, filter = {}) {
+    assertDatabaseAvailable();
+    const queryFilter = { ...filter };
+    if (userId) queryFilter.userId = userId;
+    return CrossMarketTrade.countDocuments(queryFilter);
+}
+
 module.exports = {
     connect,
     disconnect,
@@ -335,5 +365,8 @@ module.exports = {
     createCrossMarketStrategy,
     updateCrossMarketStrategy,
     deleteCrossMarketStrategy,
-    toggleCrossMarketStrategy
+    toggleCrossMarketStrategy,
+    createCrossMarketTrade,
+    getCrossMarketTrades,
+    getCrossMarketTradesCount
 };
