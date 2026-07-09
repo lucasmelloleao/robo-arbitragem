@@ -6,7 +6,9 @@ const {
     createTransferCatalogEntry,
     getTransferCatalogEntries,
     deleteTransferCatalogEntry,
-    getTransferCatalogEntryById
+    getTransferCatalogEntryById,
+    createTransferHistoryEntry,
+    getTransferHistory
 } = require('../database');
 
 function estimateTimeByNetwork(networkName) {
@@ -383,50 +385,128 @@ async function executeTransfer({ request, response }) {
         if (!isLiveMode) {
             // Modo simulação
             console.log(`[transfers] [SIMULAÇÃO] Executando saque simulado de ${amount} ${route.currency} de ${route.exchange} para o endereço ${route.depositAddress} via rede ${route.network}`);
+            const transactionId = `sim-${Math.random().toString(36).substr(2, 9)}`;
+
+            await createTransferHistoryEntry({
+                userId: decoded.id,
+                catalogId: route._id,
+                exchange: route.exchange,
+                targetExchange: route.targetExchange,
+                currency: route.currency,
+                network: route.network,
+                amount: parseFloat(amount),
+                fee: route.fee,
+                depositAddress: route.depositAddress,
+                depositTag: route.depositTag || '',
+                status: 'completed',
+                transactionId,
+                simulated: true
+            }).catch(err => console.error('[transfers] erro ao salvar historico simulado:', err.message));
+
             return sendJson(response, 200, {
                 success: true,
                 message: `[Simulado] Transferência de ${amount} ${route.currency} de ${route.exchange} para ${route.targetExchange || 'Destino'} via rede ${route.network} iniciada com sucesso.`,
-                transactionId: `sim-${Math.random().toString(36).substr(2, 9)}`,
+                transactionId,
                 simulated: true
             });
         }
 
         // Modo Live (Real)
         console.log(`[transfers] [LIVE] Iniciando saque real de ${amount} ${route.currency} de ${route.exchange} para o endereço ${route.depositAddress} na rede ${route.network}`);
-        const instance = await crossMarketService.getCcxtInstance(route.exchange, true).catch(() => null);
+        
+        let instance;
+        try {
+            instance = await crossMarketService.getCcxtInstance(route.exchange, true);
+        } catch (err) {
+            await createTransferHistoryEntry({
+                userId: decoded.id,
+                catalogId: route._id,
+                exchange: route.exchange,
+                targetExchange: route.targetExchange,
+                currency: route.currency,
+                network: route.network,
+                amount: parseFloat(amount),
+                fee: route.fee,
+                depositAddress: route.depositAddress,
+                depositTag: route.depositTag || '',
+                status: 'failed',
+                simulated: false,
+                errorMessage: `Setup CCXT: ${err.message}`
+            }).catch(e => console.error('[transfers] erro ao salvar historico:', e.message));
+
+            return sendJson(response, 400, { error: `Exchange origem ${route.exchange} não configurada ou credenciais privadas ausentes.` });
+        }
+
         if (!instance) {
             return sendJson(response, 400, { error: `Exchange origem ${route.exchange} não configurada ou credenciais privadas ausentes.` });
         }
 
-        await instance.loadMarkets().catch(() => {});
+        try {
+            await instance.loadMarkets().catch(() => {});
 
-        if (typeof instance.withdraw !== 'function') {
-            return sendJson(response, 501, { error: `A exchange ${route.exchange} não suporta retiradas via CCXT.` });
+            if (typeof instance.withdraw !== 'function') {
+                throw new Error(`A exchange ${route.exchange} não suporta retiradas via CCXT.`);
+            }
+
+            // Executar retirada no CCXT
+            const withdrawParams = {};
+            if (route.network) {
+                withdrawParams.network = route.network;
+            }
+
+            const result = await instance.withdraw(
+                route.currency,
+                parseFloat(amount),
+                route.depositAddress,
+                route.depositTag || undefined,
+                withdrawParams
+            );
+
+            console.log(`[transfers] [LIVE] Saque efetuado com sucesso! ID de transação: ${result.id}`);
+
+            await createTransferHistoryEntry({
+                userId: decoded.id,
+                catalogId: route._id,
+                exchange: route.exchange,
+                targetExchange: route.targetExchange,
+                currency: route.currency,
+                network: route.network,
+                amount: parseFloat(amount),
+                fee: result.fee || route.fee,
+                depositAddress: route.depositAddress,
+                depositTag: route.depositTag || '',
+                status: 'completed',
+                transactionId: result.id,
+                simulated: false
+            }).catch(e => console.error('[transfers] erro ao salvar historico:', e.message));
+
+            sendJson(response, 200, {
+                success: true,
+                message: `Transferência de ${amount} ${route.currency} efetuada com sucesso!`,
+                transactionId: result.id,
+                fee: result.fee || null,
+                simulated: false
+            });
+
+        } catch (withdrawErr) {
+            await createTransferHistoryEntry({
+                userId: decoded.id,
+                catalogId: route._id,
+                exchange: route.exchange,
+                targetExchange: route.targetExchange,
+                currency: route.currency,
+                network: route.network,
+                amount: parseFloat(amount),
+                fee: route.fee,
+                depositAddress: route.depositAddress,
+                depositTag: route.depositTag || '',
+                status: 'failed',
+                simulated: false,
+                errorMessage: withdrawErr.message
+            }).catch(e => console.error('[transfers] erro ao salvar historico:', e.message));
+
+            throw withdrawErr;
         }
-
-        // Executar retirada no CCXT
-        const withdrawParams = {};
-        if (route.network) {
-            withdrawParams.network = route.network;
-        }
-
-        const result = await instance.withdraw(
-            route.currency,
-            parseFloat(amount),
-            route.depositAddress,
-            route.depositTag || undefined,
-            withdrawParams
-        );
-
-        console.log(`[transfers] [LIVE] Saque efetuado com sucesso! ID de transação: ${result.id}`);
-
-        sendJson(response, 200, {
-            success: true,
-            message: `Transferência de ${amount} ${route.currency} efetuada com sucesso!`,
-            transactionId: result.id,
-            fee: result.fee || null,
-            simulated: false
-        });
 
     } catch (error) {
         console.error('[transfers] Erro na execução da transferência:', error.message);
@@ -434,9 +514,21 @@ async function executeTransfer({ request, response }) {
     }
 }
 
+async function listHistory({ request, response }) {
+    const decoded = verifyToken(request, response);
+    if (!decoded) return;
+    try {
+        const history = await getTransferHistory(decoded.id);
+        sendJson(response, 200, { history });
+    } catch (error) {
+        sendJson(response, 500, { error: error.message });
+    }
+}
+
 function registerTransferRoutes(router) {
     router.register('GET', '/api/transfers/lookup', lookupTransferInfo);
     router.register('GET', '/api/transfers/catalog', listCatalog);
+    router.register('GET', '/api/transfers/history', listHistory);
     router.register('GET', '/api/transfers/deposit-address', getDepositAddress);
     router.register('POST', '/api/transfers/catalog', addCatalogEntry);
     router.register('POST', '/api/transfers/execute', executeTransfer);

@@ -4,6 +4,7 @@ const Exchange = require('./models/Exchange');
 const CrossMarket = require('./models/CrossMarket');
 const CrossMarketTrade = require('./models/CrossMarketTrade');
 const TransferCatalog = require('./models/TransferCatalog');
+const TransferHistory = require('./models/TransferHistory');
 
 const databaseUri = process.env.MONGODB_URI;
 let isConnected = false;
@@ -368,6 +369,21 @@ async function getTransferCatalogEntryById(id, userId) {
     return TransferCatalog.findOne({ _id: id, userId }).lean();
 }
 
+async function createTransferHistoryEntry(data) {
+    assertDatabaseAvailable();
+    const history = new TransferHistory(data);
+    await history.save();
+    return history.toObject();
+}
+
+async function getTransferHistory(userId) {
+    assertDatabaseAvailable();
+    return TransferHistory.find({ userId })
+        .sort({ created_at: -1 })
+        .populate('catalogId')
+        .lean();
+}
+
 module.exports = {
     connect,
     disconnect,
@@ -400,5 +416,8 @@ module.exports = {
     createTransferCatalogEntry,
     getTransferCatalogEntries,
     deleteTransferCatalogEntry,
-    getTransferCatalogEntryById
+    getTransferCatalogEntryById,
+    // Transfer History
+    createTransferHistoryEntry,
+    getTransferHistory
 };

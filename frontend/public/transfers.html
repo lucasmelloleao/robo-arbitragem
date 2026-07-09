@@ -269,6 +269,40 @@
                     </div>
                 </div>
             </section>
+
+            <!-- Histórico de Transferências -->
+            <section class="workspace-section" style="margin-top: var(--space-8);">
+                <div class="section-heading">
+                    <div>
+                        <div class="eyebrow">Histórico</div>
+                        <h2>Transferências Efetuadas</h2>
+                    </div>
+                </div>
+
+                <div class="catalog-table-box">
+                    <div class="table-responsive">
+                        <table class="catalog-table">
+                            <thead>
+                                <tr>
+                                    <th>Data / Hora</th>
+                                    <th>Rota (De -> Para)</th>
+                                    <th>Moeda (Rede)</th>
+                                    <th>Quantidade</th>
+                                    <th>Taxa</th>
+                                    <th>Status / Modo</th>
+                                    <th>Destino (Endereço)</th>
+                                    <th>TxID / Detalhes</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-list">
+                                <tr>
+                                    <td colspan="8" class="empty-catalog">Nenhuma transferência realizada ainda.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
         </div>
     </main>
 
@@ -326,6 +360,31 @@
     <script type="module">
         import { buildApiUrl, escapeHtml, formatNumber, ALL_EXCHANGES, getExchangeTitle } from './js/shared.js';
 
+        async function copyTextToClipboard(text) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                return navigator.clipboard.writeText(text);
+            }
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.top = '0';
+            textArea.style.left = '0';
+            textArea.style.position = 'fixed';
+            textArea.style.opacity = '0';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            try {
+                const successful = document.execCommand('copy');
+                document.body.removeChild(textArea);
+                if (!successful) {
+                    throw new Error('Comando execCommand copy falhou');
+                }
+            } catch (err) {
+                document.body.removeChild(textArea);
+                throw err;
+            }
+        }
+
         const selectExchange = document.getElementById('select-exchange');
         const selectTargetExchange = document.getElementById('select-target-exchange');
         const inputCurrency = document.getElementById('input-currency');
@@ -336,6 +395,7 @@
         const resultsSubtitle = document.getElementById('results-subtitle');
         const networkCards = document.getElementById('network-cards');
         const catalogList = document.getElementById('catalog-list');
+        const historyList = document.getElementById('history-list');
 
         // Modal Elements
         const transferModal = document.getElementById('transfer-modal');
@@ -436,6 +496,8 @@
                     <span style="font-size: 0.8rem;">${escapeHtml(data.message)}</span><br>
                     <span style="font-size: 0.75rem; color: var(--text-secondary); word-break: break-all;">TxID: ${escapeHtml(data.transactionId)}</span>
                 `;
+
+                fetchHistory(); // Atualizar tabela de histórico imediatamente
                 
                 setTimeout(() => {
                     closeTransferModal();
@@ -553,7 +615,7 @@
                     const address = el.dataset.address;
                     if (!address) return;
                     try {
-                        await navigator.clipboard.writeText(address);
+                        await copyTextToClipboard(address);
                         window.parent.showToast && window.parent.showToast('Endereço copiado para a área de transferência!', 'success');
                     } catch (err) {
                         alert('Falha ao copiar endereço: ' + err.message);
@@ -782,8 +844,96 @@
             }
         }
 
+        // Buscar histórico de transferências
+        async function fetchHistory() {
+            try {
+                const token = localStorage.getItem('authToken');
+                const response = await fetch(buildApiUrl('transfers/history'), {
+                    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                });
+                if (!response.ok) throw new Error('Falha ao buscar histórico');
+                const data = await response.json();
+                renderHistoryTable(data.history);
+            } catch (err) {
+                historyList.innerHTML = `<tr><td colspan="8" class="empty-catalog" style="color: var(--danger);">Erro: ${err.message}</td></tr>`;
+            }
+        }
+
+        function renderHistoryTable(history) {
+            if (!history || history.length === 0) {
+                historyList.innerHTML = '<tr><td colspan="8" class="empty-catalog">Nenhuma transferência realizada ainda.</td></tr>';
+                return;
+            }
+
+            historyList.innerHTML = history.map(item => {
+                const dateStr = new Date(item.created_at).toLocaleString('pt-BR');
+                const originName = getExchangeTitle(item.exchange.toLowerCase());
+                const targetName = getExchangeTitle(item.targetExchange.toLowerCase());
+                
+                let statusBadge = '';
+                if (item.status === 'completed') {
+                    statusBadge = `<span class="badge badge-active" style="background: rgba(46, 204, 113, 0.2); border: 1px solid var(--accent); color: var(--accent); padding: 2px 6px; border-radius: var(--radius-sm); font-size: 0.75rem;">Sucesso</span>`;
+                } else if (item.status === 'failed') {
+                    statusBadge = `<span class="badge badge-inactive" style="background: rgba(231, 76, 60, 0.2); border: 1px solid var(--danger); color: var(--danger); padding: 2px 6px; border-radius: var(--radius-sm); font-size: 0.75rem;" title="${escapeHtml(item.errorMessage || '')}">Falhou</span>`;
+                } else {
+                    statusBadge = `<span class="badge" style="background: rgba(241, 196, 15, 0.2); border: 1px solid var(--warning); color: var(--warning); padding: 2px 6px; border-radius: var(--radius-sm); font-size: 0.75rem;">Pendente</span>`;
+                }
+
+                const modeStr = item.simulated 
+                    ? `<br><small style="color: var(--warning); font-weight: bold; font-size: 0.7rem;">Simulado</small>` 
+                    : `<br><small style="color: var(--danger); font-weight: bold; font-size: 0.7rem;">Real</small>`;
+
+                const shortAddr = item.depositAddress.length > 12 
+                    ? `${item.depositAddress.substring(0, 8)}...${item.depositAddress.slice(-4)}`
+                    : item.depositAddress;
+                
+                let destInfo = `<span class="copy-address" style="cursor: pointer; text-decoration: underline dashed rgba(255,255,255,0.3);" data-address="${escapeHtml(item.depositAddress)}" title="Clique para copiar: ${escapeHtml(item.depositAddress)}">${escapeHtml(shortAddr)} 📋</span>`;
+                if (item.depositTag) {
+                    destInfo += `<br><small class="text-secondary" style="font-size: 0.7rem;">Tag: ${escapeHtml(item.depositTag)}</small>`;
+                }
+
+                let details = '--';
+                if (item.transactionId) {
+                    const shortTx = item.transactionId.length > 12 
+                        ? `${item.transactionId.substring(0, 8)}...${item.transactionId.slice(-4)}`
+                        : item.transactionId;
+                    details = `<small class="mono text-secondary copy-address" style="cursor: pointer; text-decoration: underline dashed rgba(255,255,255,0.3);" data-address="${escapeHtml(item.transactionId)}" title="Clique para copiar TxID: ${escapeHtml(item.transactionId)}">${escapeHtml(shortTx)} 📋</small>`;
+                } else if (item.errorMessage) {
+                    details = `<small style="color: var(--danger); font-size: 0.75rem;" title="${escapeHtml(item.errorMessage)}">${escapeHtml(item.errorMessage.length > 25 ? item.errorMessage.substring(0, 22) + '...' : item.errorMessage)}</small>`;
+                }
+
+                return `
+                    <tr>
+                        <td><small style="font-size: 0.75rem; color: var(--text-secondary);">${escapeHtml(dateStr)}</small></td>
+                        <td><strong>${escapeHtml(originName)}</strong> &rarr; <strong>${escapeHtml(targetName)}</strong></td>
+                        <td class="mono" style="font-size: 0.8rem;">${escapeHtml(item.currency)} <small class="text-secondary">(${escapeHtml(item.network)})</small></td>
+                        <td class="mono"><strong>${formatNumber(item.amount, 6)}</strong></td>
+                        <td class="mono" style="font-size: 0.8rem;">${formatNumber(item.fee, 6)} ${escapeHtml(item.currency)}</td>
+                        <td>${statusBadge}${modeStr}</td>
+                        <td style="font-size: 0.8rem;">${destInfo}</td>
+                        <td>${details}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            // Bind click to copy for history copy elements
+            historyList.querySelectorAll('.copy-address').forEach(el => {
+                el.addEventListener('click', async () => {
+                    const val = el.dataset.address;
+                    if (!val) return;
+                    try {
+                        await copyTextToClipboard(val);
+                        window.parent.showToast && window.parent.showToast('Copiado para a área de transferência!', 'success');
+                    } catch (err) {
+                        alert('Falha ao copiar: ' + err.message);
+                    }
+                });
+            });
+        }
+
         // Inicialização
         fetchCatalog();
+        fetchHistory();
     </script>
 </body>
 </html>
