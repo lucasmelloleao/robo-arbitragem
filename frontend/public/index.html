@@ -70,6 +70,12 @@
                         <span>Exchanges</span>
                     </button>
                 </div>
+                <div class="nav-section" role="separator">
+                    <button class="nav-item button-logout" id="btn-logout" type="button" style="margin-top: var(--space-4); border-top: 1px solid var(--border-card); padding-top: var(--space-4); color: var(--danger); width: 100%; text-align: left;">
+                        <span class="nav-icon" aria-hidden="true" style="color: var(--danger);">🚪</span>
+                        <span>Sair</span>
+                    </button>
+                </div>
             </nav>
         </aside>
 
@@ -454,6 +460,14 @@
         }
 
         // Event Listeners
+        const logoutBtn = document.getElementById('btn-logout');
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', () => {
+                localStorage.removeItem('authToken');
+                window.location.href = '/login.html';
+            });
+        }
+
         if (sidebarToggle) {
             sidebarToggle.addEventListener('click', toggleSidebar);
         }
