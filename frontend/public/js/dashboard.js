@@ -448,7 +448,11 @@ export async function initDashboardPage() {
                     throw new Error(`Ação não suportada: ${action}`);
             }
             
-            const response = await fetch(url, { method: 'GET' });
+            const token = localStorage.getItem('authToken');
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+            });
             const data = await response.json();
             
             if (!response.ok) {

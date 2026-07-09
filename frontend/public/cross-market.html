@@ -279,10 +279,25 @@
 
         async function apiFetch(path, options) {
             options = options || {};
+            options.headers = options.headers || {};
+            
+            var token = localStorage.getItem('authToken');
+            if (token) {
+                options.headers['Authorization'] = 'Bearer ' + token;
+            }
+
             var url = apiUrl(path);
             var response = await fetch(url, options);
             var data = await response.json().catch(function() { return {}; });
-            if (!response.ok) throw new Error(data.error || 'Erro na requisi\u00e7\u00e3o');
+            
+            if (!response.ok) {
+                if (response.status === 401) {
+                    localStorage.removeItem('authToken');
+                    window.location.href = '/login.html';
+                    return;
+                }
+                throw new Error(data.error || 'Erro na requisi\u00e7\u00e3o');
+            }
             return data;
         }
 

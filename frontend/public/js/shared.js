@@ -12,10 +12,17 @@ const EXCHANGE_ACRONYM_MAP = {
     woo: 'WOO'
 };
 
+function getAuthHeaders() {
+    const token = localStorage.getItem('authToken');
+    return token ? { 'Authorization': `Bearer ${token}` } : {};
+}
+
 async function loadActiveExchangeStatuses() {
     try {
         const baseUrl = window.API_URL || '';
-        const result = await fetch(`${baseUrl}/api/exchanges/statuses`);
+        const result = await fetch(`${baseUrl}/api/exchanges/statuses`, {
+            headers: getAuthHeaders()
+        });
         const data = await result.json();
         return data.statuses || {};
     } catch {
@@ -130,10 +137,20 @@ export function escapeHtml(value) {
 }
 
 export async function fetchJson(url, options = {}) {
+    // Injeta automaticamente o token JWT se disponível
+    const authHeaders = getAuthHeaders();
+    options.headers = { ...authHeaders, ...(options.headers || {}) };
+
     const response = await fetch(url, options);
     const result = await response.json().catch(() => ({}));
 
     if (!response.ok) {
+        // Se 401, redireciona para login
+        if (response.status === 401) {
+            localStorage.removeItem('authToken');
+            window.location.href = '/login.html';
+            return;
+        }
         throw new Error(result.error || 'Falha ao processar requisi\u00e7\u00e3o.');
     }
 
