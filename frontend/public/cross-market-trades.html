@@ -490,7 +490,15 @@
                     <tr>
                         <td>${date}</td>
                         <td><strong>${escapeHtml(t.strategyName)}</strong></td>
-                        <td class="mono">${escapeHtml(t.baseAsset)}/${escapeHtml(t.quoteAsset)}</td>
+                        <td class="mono">
+                            <span style="display: inline-flex; align-items: center; gap: 6px; vertical-align: middle;">
+                                <img src="https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/${t.baseAsset.toLowerCase()}.png" 
+                                     onerror="this.style.display='none'" 
+                                     alt="" 
+                                     style="width: 16px; height: 16px; border-radius: 50%; object-fit: contain;" />
+                                ${escapeHtml(t.baseAsset)}/${escapeHtml(t.quoteAsset)}
+                            </span>
+                        </td>
                         <td>
                             <div>${escapeHtml(t.buyExchange)}</div>
                             <small class="mono text-secondary">${formatNumber(t.buyPrice, 4)}</small>

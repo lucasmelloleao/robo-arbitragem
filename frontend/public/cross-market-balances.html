@@ -160,11 +160,20 @@
                     ? formatNumber(item.valueUsdt, 2)
                     : '--';
                 
+                const coinName = (item.currency || item.coin || 'N/A').toUpperCase();
+                const iconUrl = `https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/${coinName.toLowerCase()}.png`;
+
                 return `
                 <article class="log-card">
-                    <div class="row">
+                    <div class="row" style="display: flex; align-items: center; justify-content: space-between;">
                         <span>Moeda</span>
-                        <strong class="positive">${escapeHtml(item.currency || item.coin || 'N/A')}</strong>
+                        <strong class="positive" style="display: inline-flex; align-items: center; gap: 6px;">
+                            <img src="${iconUrl}" 
+                                 onerror="this.style.display='none'" 
+                                 alt="" 
+                                 style="width: 18px; height: 18px; border-radius: 50%; vertical-align: middle; object-fit: contain;" />
+                            ${escapeHtml(coinName)}
+                        </strong>
                     </div>
                     <div class="row">
                         <span>Total</span>

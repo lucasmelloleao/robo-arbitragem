@@ -581,7 +581,15 @@
                 return `
                     <tr>
                         <td><strong>${escapeHtml(exchangeName)}</strong></td>
-                        <td class="mono"><strong>${escapeHtml(item.currency)}</strong></td>
+                        <td class="mono">
+                            <span style="display: inline-flex; align-items: center; gap: 6px; vertical-align: middle;">
+                                <img src="https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/${item.currency.toLowerCase()}.png" 
+                                     onerror="this.style.display='none'" 
+                                     alt="" 
+                                     style="width: 16px; height: 16px; border-radius: 50%; object-fit: contain;" />
+                                <strong>${escapeHtml(item.currency)}</strong>
+                            </span>
+                        </td>
                         <td class="mono text-secondary">${escapeHtml(item.network)}</td>
                         <td class="mono">${formatNumber(item.fee, 6)} ${escapeHtml(item.currency)}</td>
                         <td class="mono">${formatNumber(item.minAmount, 6)} ${escapeHtml(item.currency)}</td>
@@ -906,7 +914,15 @@
                     <tr>
                         <td><small style="font-size: 0.75rem; color: var(--text-secondary);">${escapeHtml(dateStr)}</small></td>
                         <td><strong>${escapeHtml(originName)}</strong> &rarr; <strong>${escapeHtml(targetName)}</strong></td>
-                        <td class="mono" style="font-size: 0.8rem;">${escapeHtml(item.currency)} <small class="text-secondary">(${escapeHtml(item.network)})</small></td>
+                        <td class="mono" style="font-size: 0.8rem;">
+                            <span style="display: inline-flex; align-items: center; gap: 6px; vertical-align: middle;">
+                                <img src="https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/${item.currency.toLowerCase()}.png" 
+                                     onerror="this.style.display='none'" 
+                                     alt="" 
+                                     style="width: 16px; height: 16px; border-radius: 50%; object-fit: contain;" />
+                                ${escapeHtml(item.currency)} <small class="text-secondary">(${escapeHtml(item.network)})</small>
+                            </span>
+                        </td>
                         <td class="mono"><strong>${formatNumber(item.amount, 6)}</strong></td>
                         <td class="mono" style="font-size: 0.8rem;">${formatNumber(item.fee, 6)} ${escapeHtml(item.currency)}</td>
                         <td>${statusBadge}${modeStr}</td>

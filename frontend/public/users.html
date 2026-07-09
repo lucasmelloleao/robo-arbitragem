@@ -285,9 +285,13 @@
                     const url = baseUrl ? `${baseUrl}/api/${path}` : `/api/${path}`;
                     const method = isEdit ? 'PUT' : 'POST';
 
+                    const token = localStorage.getItem('authToken');
+                    const headers = { 'Content-Type': 'application/json' };
+                    if (token) headers['Authorization'] = `Bearer ${token}`;
+
                     const response = await fetch(url, {
                         method,
-                        headers: { 'Content-Type': 'application/json' },
+                        headers,
                         body: JSON.stringify(userData)
                     });
 
@@ -321,7 +325,10 @@
 
             try {
                 const baseUrl = window.API_URL || '';
-                const response = await fetch(`${baseUrl}/api/users`);
+                const token = localStorage.getItem('authToken');
+                const response = await fetch(`${baseUrl}/api/users`, {
+                    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                });
                 const result = await response.json();
 
                 if (!response.ok) {
@@ -369,7 +376,10 @@
         async function editUser(username) {
             try {
                 const baseUrl = window.API_URL || '';
-                const response = await fetch(`${baseUrl}/api/users/${encodeURIComponent(username)}`);
+                const token = localStorage.getItem('authToken');
+                const response = await fetch(`${baseUrl}/api/users/${encodeURIComponent(username)}`, {
+                    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                });
                 const result = await response.json();
 
                 if (!response.ok) {
@@ -404,9 +414,13 @@
         async function toggleUserStatus(username, newStatus) {
             try {
                 const baseUrl = window.API_URL || '';
+                const token = localStorage.getItem('authToken');
+                const headers = { 'Content-Type': 'application/json' };
+                if (token) headers['Authorization'] = `Bearer ${token}`;
+
                 const response = await fetch(`${baseUrl}/api/users/${encodeURIComponent(username)}`, {
                     method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers,
                     body: JSON.stringify({ stopTrader: newStatus })
                 });
 
@@ -431,8 +445,10 @@
 
             try {
                 const baseUrl = window.API_URL || '';
+                const token = localStorage.getItem('authToken');
                 const response = await fetch(`${baseUrl}/api/users/${encodeURIComponent(username)}`, {
-                    method: 'DELETE'
+                    method: 'DELETE',
+                    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
                 });
 
                 const result = await response.json();
