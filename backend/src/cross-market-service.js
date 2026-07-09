@@ -36,6 +36,85 @@ const EXCHANGE_CCXT_MAP = {
 const publicCcxtInstances = {};
 const privateCcxtInstances = new Map(); // Cache para instâncias autenticadas
 
+// Cache em memória para saldos de corretoras para validação instantânea (0ms no trade)
+// Estrutura: exchangeAcronym -> { balanceData: Object, timestamp: Number }
+const balanceCache = new Map();
+let balanceCacheIntervalId = null;
+
+/**
+ * Atualiza o cache de saldo de uma exchange em background
+ */
+async function updateBalanceCache(exchangeAcronym) {
+    try {
+        const instance = await getCcxtInstance(exchangeAcronym, true);
+        if (!instance) return;
+        
+        // Garante mercados carregados para evitar erros
+        if (Object.keys(instance.markets || {}).length === 0) {
+            await instance.loadMarkets().catch(() => {});
+        }
+
+        const balanceData = await instance.fetchBalance();
+        balanceCache.set(exchangeAcronym, {
+            balanceData,
+            timestamp: Date.now()
+        });
+        /*
+        log('info', 'Cache de saldo atualizado em background', {
+            exchange: exchangeAcronym,
+            assets: Object.keys(balanceData.free || {}).filter(k => (balanceData.free[k] || 0) > 0)
+        });
+        */
+    } catch (err) {
+        log('error', 'Falha ao atualizar cache de saldo em background', {
+            exchange: exchangeAcronym,
+            error: err.message
+        });
+    }
+}
+
+/**
+ * Inicia o loop de atualização do cache de saldo em background
+ */
+function startBalanceCacheLoop() {
+    if (balanceCacheIntervalId) clearInterval(balanceCacheIntervalId);
+    
+    // Atualiza imediatamente e agenda a cada 10 segundos
+    const triggerUpdate = () => {
+        // Encontra todas as exchanges ativas nas estratégias e atualiza
+        const activeExchanges = new Set();
+        cachedStrategies.forEach((s) => {
+            activeExchanges.add(s.exchange1);
+            activeExchanges.add(s.exchange2);
+        });
+        activeExchanges.forEach((ex) => {
+            updateBalanceCache(ex).catch(() => {});
+        });
+    };
+
+    triggerUpdate();
+    balanceCacheIntervalId = setInterval(triggerUpdate, 10000);
+}
+
+/**
+ * Obtém o saldo cacheado para validação ou força fetch se expirado/inexistente
+ */
+async function getCachedBalance(exchangeAcronym) {
+    const cached = balanceCache.get(exchangeAcronym);
+    // Validade máxima do cache de saldo: 30 segundos
+    if (cached && (Date.now() - cached.timestamp < 30000)) {
+        return cached.balanceData;
+    }
+    // Fallback: se não estiver no cache ou expirou, busca na hora
+    const instance = await getCcxtInstance(exchangeAcronym, true);
+    const balanceData = await instance.fetchBalance();
+    balanceCache.set(exchangeAcronym, {
+        balanceData,
+        timestamp: Date.now()
+    });
+    return balanceData;
+}
+
 async function getCcxtInstance(exchangeAcronym, forLiveTrading = false) {
     var ccxtId = EXCHANGE_CCXT_MAP[exchangeAcronym];
     if (!ccxtId) return null;
@@ -68,10 +147,7 @@ async function getCcxtInstance(exchangeAcronym, forLiveTrading = false) {
             secret: credentials.secretKey,
             password: credentials.password, // Para exchanges como OKX
             enableRateLimit: true,
-            timeout: 20000, // Timeout maior para operações autenticadas
-            options: {
-                'createMarketBuyOrderRequiresPrice': false
-            }
+            timeout: 20000 // Timeout maior para operações autenticadas
         });
 
         privateCcxtInstances.set(exchangeAcronym, instance);
@@ -242,64 +318,129 @@ async function executeCrossMarketTrade(strategy, buyExchange, sellExchange, buyP
             }
         }
 
-        // 2. Validar saldos
-        const buyBalance = await buyInstance.fetchBalance();
+        // 2. Validar saldos usando o cache em memória (0ms de latência)
+        const buyBalance = await getCachedBalance(buyExchange);
         const quoteBalance = buyBalance.free[strategy.asset1];
         if (!quoteBalance || quoteBalance < quoteAmount) {
-            throw new Error(`Saldo insuficiente em ${buyExchange}: necessario ~${quoteAmount.toFixed(4)} ${strategy.asset1}, disponivel ${quoteBalance || 0}`);
+            throw new Error(`[Saldo Cacheado Insuficiente] ${buyExchange}: necessario ~${quoteAmount.toFixed(4)} ${strategy.asset1}, disponivel ${quoteBalance || 0}`);
         }
 
-        const sellBalance = await sellInstance.fetchBalance();
+        const sellBalance = await getCachedBalance(sellExchange);
         const baseBalance = sellBalance.free[strategy.asset2];
-        // Valida contra o lote formatado de venda, que é o que será enviado para a API
         if (!baseBalance || baseBalance < parseFloat(sellAmountFormatted)) {
-            throw new Error(`Saldo insuficiente em ${sellExchange}: necessario ${sellAmountFormatted} ${strategy.asset2}, disponivel ${baseBalance || 0}`);
+            throw new Error(`[Saldo Cacheado Insuficiente] ${sellExchange}: necessario ${sellAmountFormatted} ${strategy.asset2}, disponivel ${baseBalance || 0}`);
         }
 
-        log('info', 'Saldos validados com sucesso', {
+        log('info', 'Saldos validados com sucesso (via cache em memoria)', {
             buyExchange,
             sellExchange
         }, strategy._id);
 
         // 3. Executar ordens (market orders para agilidade)
-        let buyOrder, sellOrder;
-        try {
-            log('info', 'Enviando ordens SIMULTANEAS', {
-                buyExchange,
-                sellExchange,
-                symbol,
-                buyAmount: buyAmountFormatted,
-                sellAmount: sellAmountFormatted
-            }, strategy._id);
-            [buyOrder, sellOrder] = await Promise.all([
-                buyInstance.createMarketBuyOrder(symbol, parseFloat(buyAmountFormatted), buyPrice),
-                sellInstance.createMarketSellOrder(symbol, parseFloat(sellAmountFormatted))
-            ]);
+        let buyOrder = null;
+        let sellOrder = null;
+        let buyError = null;
+        let sellError = null;
 
+        // Dispara as ordens simultaneamente e captura os erros individualmente
+        const buyAmountParam = parseFloat(buyAmountFormatted);
+        let buyPriceParam = undefined;
+        
+        const isGateIo = buyExchange.toLowerCase().includes('gate') || 
+                         (buyInstance.id && buyInstance.id.toLowerCase().includes('gate'));
 
+        if (isGateIo) {
+            buyPriceParam = buyPrice;
+        }
 
+        log('info', 'Dados de envio da ordem de COMPRA', {
+            exchange: buyExchange,
+            ccxtId: buyInstance.id,
+            isGateIo,
+            symbol,
+            amount: buyAmountParam,
+            priceParam: buyPriceParam
+        }, strategy._id);
 
-            log('info', 'Ordem de COMPRA executada', { exchange: buyExchange, orderId: buyOrder.id }, strategy._id);
-            log('info', 'Ordem de VENDA executada', { exchange: sellExchange, orderId: sellOrder.id }, strategy._id);
-        } catch (error) {
-            var isBuyError = error.message && (error.message.includes('buy') || error.message.includes('COMPRA'));
-            if (isBuyError && !sellOrder) {
-                log('error', 'Falha ao executar ordem de COMPRA', { exchange: buyExchange, error: error.message }, strategy._id);
-                throw new Error(`Falha na ordem de compra em ${buyExchange}: ${error.message}`);
-            } else {
-                log('error', 'FALHA CRITICA: Compra executada, mas VENDA falhou!', {
-                    strategy: strategy.name,
-                    buyOrder,
-                    sellError: error.message
+        let buyPromise;
+        if (isGateIo) {
+            // A Gate.io no CCXT funciona de forma estável usando o método genérico createOrder com tipo 'market'
+            buyPromise = buyInstance.createOrder(symbol, 'market', 'buy', buyAmountParam, buyPriceParam)
+                .then(order => { buyOrder = order; })
+                .catch(err => { buyError = err; });
+        } else {
+            buyPromise = buyInstance.createMarketBuyOrder(symbol, buyAmountParam)
+                .then(order => { buyOrder = order; })
+                .catch(err => { buyError = err; });
+        }
+
+        const sellPromise = sellInstance.createMarketSellOrder(symbol, parseFloat(sellAmountFormatted))
+            .then(order => { sellOrder = order; })
+            .catch(err => { sellError = err; });
+
+        log('info', 'Enviando ordens SIMULTANEAS', {
+            buyExchange,
+            sellExchange,
+            symbol,
+            buyAmount: buyAmountFormatted,
+            sellAmount: sellAmountFormatted
+        }, strategy._id);
+
+        await Promise.all([buyPromise, sellPromise]);
+
+        // Tratar os resultados de forma precisa
+        if (buyError || sellError) {
+            if (buyError && sellError) {
+                log('error', 'Falha em AMBAS as ordens simultaneas', {
+                    buyExchange, buyError: buyError.message,
+                    sellExchange, sellError: sellError.message
                 }, strategy._id);
-                return {
-                    success: false,
-                    message: `RISCO: Compra em ${buyExchange} OK, mas venda em ${sellExchange} FALHOU: ${error.message}`,
-                    buyOrder,
-                    sellOrder: null
-                };
+                throw new Error(`Falha em ambas as exchanges: Compra(${buyExchange})=${buyError.message} | Venda(${sellExchange})=${sellError.message}`);
+            }
+
+            if (buyError) {
+                // Compra falhou, venda deu certo? (Falha crítica reversa)
+                if (sellOrder) {
+                    log('error', 'FALHA CRITICA INVERSA: Venda executada, mas COMPRA falhou!', {
+                        strategy: strategy.name,
+                        sellOrder,
+                        buyError: buyError.message
+                    }, strategy._id);
+                    return {
+                        success: false,
+                        message: `RISCO: Venda em ${sellExchange} OK, mas compra em ${buyExchange} FALHOU: ${buyError.message}`,
+                        buyOrder: null,
+                        sellOrder
+                    };
+                }
+                // Apenas a compra falhou antes de qualquer execução de venda
+                log('error', 'Falha ao executar ordem de COMPRA', { exchange: buyExchange, error: buyError.message }, strategy._id);
+                throw new Error(`Falha na ordem de compra em ${buyExchange}: ${buyError.message}`);
+            }
+
+            if (sellError) {
+                // Compra deu certo, mas a venda falhou (Falha crítica clássica)
+                if (buyOrder) {
+                    log('error', 'FALHA CRITICA: Compra executada, mas VENDA falhou!', {
+                        strategy: strategy.name,
+                        buyOrder,
+                        sellError: sellError.message
+                    }, strategy._id);
+                    return {
+                        success: false,
+                        message: `RISCO: Compra em ${buyExchange} OK, mas venda em ${sellExchange} FALHOU: ${sellError.message}`,
+                        buyOrder,
+                        sellOrder: null
+                    };
+                }
+                // Apenas a venda falhou
+                log('error', 'Falha ao executar ordem de VENDA', { exchange: sellExchange, error: sellError.message }, strategy._id);
+                throw new Error(`Falha na ordem de venda em ${sellExchange}: ${sellError.message}`);
             }
         }
+
+        log('info', 'Ordem de COMPRA executada', { exchange: buyExchange, orderId: buyOrder.id }, strategy._id);
+        log('info', 'Ordem de VENDA executada', { exchange: sellExchange, orderId: sellOrder.id }, strategy._id);
 
         return {
             success: true,
@@ -322,10 +463,27 @@ async function executeCrossMarketTrade(strategy, buyExchange, sellExchange, buyP
     }
 }
 
+// Trava para evitar execução concorrente do scan de uma mesma estratégia
+const activeScans = new Set();
+
 /**
  * Executa uma varredura (scan) para uma estratégia
  */
 async function executeScan(strategy) {
+    var strategyId = String(strategy._id);
+
+    // Se já houver um scan ativo para esta estratégia, ignora o disparo concorrente
+    if (activeScans.has(strategyId)) {
+        return {
+            strategyId: strategy._id,
+            strategyName: strategy.name,
+            error: 'Scan ja em andamento (trava concorrencia ativa)',
+            hasOpportunity: false
+        };
+    }
+
+    activeScans.add(strategyId);
+
     var result = {
         strategyId: strategy._id,
         strategyName: strategy.name,
@@ -347,89 +505,93 @@ async function executeScan(strategy) {
     };
 
     try {
-        /*
-         log('info', 'Executando scan', {
-             strategy: strategy.name,
-             pair: strategy.asset2 + '/' + strategy.asset1,
-             exchanges: strategy.exchange1 + ' vs ' + strategy.exchange2
-         }, strategy._id);
-         */
+        try {
+            /*
+             log('info', 'Executando scan', {
+                 strategy: strategy.name,
+                 pair: strategy.asset2 + '/' + strategy.asset1,
+                 exchanges: strategy.exchange1 + ' vs ' + strategy.exchange2
+             }, strategy._id);
+             */
 
-        // Buscar preços simultaneamente
-        var [price1, price2] = await Promise.all([
-            fetchTickerPrice(strategy.exchange1, strategy.asset1, strategy.asset2),
-            fetchTickerPrice(strategy.exchange2, strategy.asset1, strategy.asset2)
-        ]);
+            // Buscar preços simultaneamente
+            var [price1, price2] = await Promise.all([
+                fetchTickerPrice(strategy.exchange1, strategy.asset1, strategy.asset2),
+                fetchTickerPrice(strategy.exchange2, strategy.asset1, strategy.asset2)
+            ]);
 
-        result.price1 = price1;
-        result.price2 = price2;
+            result.price1 = price1;
+            result.price2 = price2;
 
-        if (price1 === null || price2 === null) {
-            result.error = 'Nao foi possivel obter precos de uma ou ambas as exchanges';
-            log('warn', 'Scan incompleto', { error: result.error }, strategy._id);
-            return result;
-        }
+            if (price1 === null || price2 === null) {
+                result.error = 'Nao foi possivel obter precos de uma ou ambas as exchanges';
+                log('warn', 'Scan incompleto', { error: result.error }, strategy._id);
+                return result;
+            }
 
-        // Calcular spread
-        var higherPrice = Math.max(price1, price2);
-        var lowerPrice = Math.min(price1, price2);
-        var spread = higherPrice - lowerPrice;
-        var midPrice = (price1 + price2) / 2;
-        var spreadPercent = (spread / midPrice) * 100;
+            // Calcular spread
+            var higherPrice = Math.max(price1, price2);
+            var lowerPrice = Math.min(price1, price2);
+            var spread = higherPrice - lowerPrice;
+            var midPrice = (price1 + price2) / 2;
+            var spreadPercent = (spread / midPrice) * 100;
 
-        result.spreadPercent = spreadPercent;
+            result.spreadPercent = spreadPercent;
 
-        // Verificar se o spread atende o mínimo configurado
-        var minSpread = strategy.minSpreadPercent || 0.1;
-        var tradingFee = strategy.tradingFeePercent || 0.1;
-        var totalCost = tradingFee;
-        var netSpread = spreadPercent - totalCost;
+            // Verificar se o spread atende o mínimo configurado
+            var minSpread = strategy.minSpreadPercent || 0.1;
+            var tradingFee = strategy.tradingFeePercent || 0.1;
+            var totalCost = tradingFee;
+            var netSpread = spreadPercent - totalCost;
 
-        // O lucro estimado agora é calculado sobre o valor da operação (em moeda de cotação)
-        const quoteAmount = strategy.operationAmount;
-        const estimatedProfitInQuote = (quoteAmount * netSpread) / 100;
-        result.estimatedProfitPercent = netSpread;
-        result.estimatedProfit = estimatedProfitInQuote;
+            // O lucro estimado agora é calculado sobre o valor da operação (em moeda de cotação)
+            const quoteAmount = strategy.operationAmount;
+            const estimatedProfitInQuote = (quoteAmount * netSpread) / 100;
+            result.estimatedProfitPercent = netSpread;
+            result.estimatedProfit = estimatedProfitInQuote;
 
-        if (netSpread > minSpread) {
-            result.hasOpportunity = true;
+            if (netSpread > minSpread) {
+                result.hasOpportunity = true;
 
-            if (price1 < price2) {
-                result.simulationAction = 'Comprar em ' + strategy.exchange1 + ' e vender em ' + strategy.exchange2;
+                if (price1 < price2) {
+                    result.simulationAction = 'Comprar em ' + strategy.exchange1 + ' e vender em ' + strategy.exchange2;
+                } else {
+                    result.simulationAction = 'Comprar em ' + strategy.exchange2 + ' e vender em ' + strategy.exchange1;
+                }
+
+                log('info', 'OPORTUNIDADE ENCONTRADA', {
+                    strategy: strategy.name,
+                    spread: spreadPercent.toFixed(4) + '%',
+                    profit: netSpread.toFixed(4) + '%',
+                    action: result.simulationAction,
+                    liveMode: strategy.enableLiveTrading
+                }, strategy._id);
+
+                // Se estiver em modo live, executa a operação
+                if (strategy.enableLiveTrading) {
+                    const buyExchange = price1 < price2 ? strategy.exchange1 : strategy.exchange2;
+                    const sellExchange = price1 < price2 ? strategy.exchange2 : strategy.exchange1;
+                    const buyPrice = Math.min(price1, price2);
+                    const sellPrice = Math.max(price1, price2);
+
+                    const executionResult = await executeCrossMarketTrade(strategy, buyExchange, sellExchange, buyPrice, sellPrice);
+                    result.liveExecution = executionResult;
+                }
+
             } else {
-                result.simulationAction = 'Comprar em ' + strategy.exchange2 + ' e vender em ' + strategy.exchange1;
+                log('info', 'Sem oportunidade', {
+                    strategy: strategy.name,
+                    spread: spreadPercent.toFixed(4) + '%',
+                    minRequired: (minSpread + totalCost).toFixed(4) + '%',
+                    netProfit: netSpread.toFixed(4) + '%'
+                }, strategy._id);
             }
-
-            log('info', 'OPORTUNIDADE ENCONTRADA', {
-                strategy: strategy.name,
-                spread: spreadPercent.toFixed(4) + '%',
-                profit: netSpread.toFixed(4) + '%',
-                action: result.simulationAction,
-                liveMode: strategy.enableLiveTrading
-            }, strategy._id);
-
-            // Se estiver em modo live, executa a operação
-            if (strategy.enableLiveTrading) {
-                const buyExchange = price1 < price2 ? strategy.exchange1 : strategy.exchange2;
-                const sellExchange = price1 < price2 ? strategy.exchange2 : strategy.exchange1;
-                const buyPrice = Math.min(price1, price2);
-                const sellPrice = Math.max(price1, price2);
-
-                const executionResult = await executeCrossMarketTrade(strategy, buyExchange, sellExchange, buyPrice, sellPrice);
-                result.liveExecution = executionResult;
-            }
-
-        } else {
-            log('info', 'Sem oportunidade', {
-                strategy: strategy.name,
-                spread: spreadPercent.toFixed(4) + '%',
-                minRequired: (minSpread + totalCost).toFixed(4) + '%',
-                netProfit: netSpread.toFixed(4) + '%'
-            }, strategy._id);
+        } catch (error) {
+            result.error = error.message;
+            log('error', 'Erro no scan', { strategy: strategy.name, error: error.message }, strategy._id);
         }
-    } catch (error) {
-        result.error = error.message;
-        log('error', 'Erro no scan', { strategy: strategy.name, error: error.message }, strategy._id);
+    } finally {
+        activeScans.delete(strategyId);
     }
 
     return result;
@@ -534,6 +696,9 @@ async function initialize() {
     log('info', 'Inicializando servico Cross-Market');
     await refreshStrategies();
 
+    // Iniciar o loop de sincronização de saldo em background
+    startBalanceCacheLoop();
+
     // Iniciar scan para cada estratégia ativa
     cachedStrategies.forEach(function (strategy) {
         startStrategyScan(strategy);
@@ -548,7 +713,16 @@ async function initialize() {
 async function restart() {
     log('info', 'Reiniciando servico Cross-Market');
     stopAllScans();
+    
+    // Para e limpa o loop do cache de saldo anterior
+    if (balanceCacheIntervalId) {
+        clearInterval(balanceCacheIntervalId);
+    }
+    
     await refreshStrategies();
+    
+    // Inicia novamente
+    startBalanceCacheLoop();
 
     cachedStrategies.forEach(function (strategy) {
         startStrategyScan(strategy);
@@ -622,6 +796,7 @@ module.exports = {
     getLogs,
     getPublicCcxtInstance,
     getCcxtInstance,
+    getCachedBalance,
     onScanResult: {
         get: function () { return onScanResult; },
         set: function (fn) { onScanResult = fn; }

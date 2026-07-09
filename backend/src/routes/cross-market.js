@@ -247,82 +247,92 @@ async function getBalances({ request, response, params }) {
                 let balanceData;
                 let tickers = {};
                 try {
-                    balanceData = await exchangeInstance.fetchBalance();
-                    
-                    // Buscar tickers para cálculo de valor em USDT
-                    let markets = exchangeInstance.markets || {};
-                    if (Object.keys(markets).length === 0 && typeof exchangeInstance.loadMarkets === 'function') {
-                        try {
-                            markets = await exchangeInstance.loadMarkets();
-                        } catch (marketsError) {
-                            console.warn(`[balances] Falha ao carregar mercados para ${exchangeAcronym}:`, marketsError.message);
-                        }
+                    // Obtém a instância autenticada para garantir acesso aos saldos privados
+                    const authenticatedInstance = await crossMarketService.getCcxtInstance(exchangeAcronym, true);
+                    if (!authenticatedInstance) {
+                        throw new Error('Instância autenticada não disponível para ' + exchangeAcronym);
                     }
                     
-                    const usdtPairs = Object.entries(markets)
-                        .filter(([symbol]) => symbol.includes('/USDT'))
-                        .slice(0, 50);
-                    
-                    if (usdtPairs.length > 0) {
-                        const tickerPromises = usdtPairs.map(([symbol]) => 
-                            exchangeInstance.fetchTicker(symbol).catch(() => null)
-                        );
-                        const tickerResults = await Promise.all(tickerPromises);
-                        
-                        tickerResults.forEach((ticker, index) => {
-                            if (ticker) {
-                                const [base] = usdtPairs[index][0].split('/');
-                                tickers[base] = ticker.last || ticker.close;
-                            }
+                    // Busca saldo do cache de forma instantânea
+                    balanceData = await crossMarketService.getCachedBalance(exchangeAcronym);
+
+                    // Obter preços usando a instância autenticada para as moedas que têm saldo
+                    try {
+                        const activeCoins = Object.keys(balanceData.free || {}).filter((coin) => {
+                            const total = (balanceData.free[coin] || 0) + (balanceData.used[coin] || 0);
+                            return total > 0.000001 && coin !== 'USDT';
                         });
-                    }
-                } catch (publicError) {
-                    const requiresAuth = /requires.*apiKey|requires.*credential|apiKey.*credential/i.test(String(publicError.message || ''));
-                    if (requiresAuth) {
-                        const authenticatedInstance = await crossMarketService.getCcxtInstance(exchangeAcronym, true);
-                        if (!authenticatedInstance) {
-                            throw new Error('Instância autenticada não disponível para ' + exchangeAcronym);
-                        }
-                        balanceData = await authenticatedInstance.fetchBalance();
-                        
-                        // Obter preços usando a instância autenticada para as moedas que têm saldo
-                        try {
-                            const activeCoins = Object.keys(balanceData.free || {}).filter((coin) => {
-                                const total = (balanceData.free[coin] || 0) + (balanceData.used[coin] || 0);
-                                return total > 0.000001 && coin !== 'USDT';
+
+                        if (activeCoins.length > 0) {
+                            if (Object.keys(authenticatedInstance.markets || {}).length === 0) {
+                                await authenticatedInstance.loadMarkets().catch(() => {});
+                            }
+
+                            // Busca preços em paralelo apenas das moedas com saldo
+                            const tickerPromises = activeCoins.map(async (coin) => {
+                                const symbol = `${coin}/USDT`;
+                                if (authenticatedInstance.markets && authenticatedInstance.markets[symbol]) {
+                                    try {
+                                        const tick = await authenticatedInstance.fetchTicker(symbol);
+                                        return { coin, price: tick.last || tick.close };
+                                    } catch (e) {
+                                        return null;
+                                    }
+                                }
+                                return null;
                             });
 
-                            if (activeCoins.length > 0) {
-                                // Tentar carregar os mercados primeiro se necessário
-                                if (Object.keys(authenticatedInstance.markets || {}).length === 0) {
-                                    await authenticatedInstance.loadMarkets().catch(() => {});
-                                }
-
-                                // Busca preços em paralelo apenas das moedas com saldo
-                                const tickerPromises = activeCoins.map(async (coin) => {
-                                    const symbol = `${coin}/USDT`;
-                                    // Verifica se o mercado existe antes de buscar
-                                    if (authenticatedInstance.markets && authenticatedInstance.markets[symbol]) {
-                                        try {
-                                            const tick = await authenticatedInstance.fetchTicker(symbol);
-                                            return { coin, price: tick.last || tick.close };
-                                        } catch (e) {
-                                            return null;
-                                        }
-                                    }
-                                    return null;
-                                });
-
-                                const results = await Promise.all(tickerPromises);
-                                results.forEach((r) => {
-                                    if (r) tickers[r.coin] = r.price;
-                                });
-                            }
-                        } catch (tickerError) {
-                            console.warn(`[balances] Erro ao obter tickers para ${exchangeAcronym}:`, tickerError.message);
+                            const results = await Promise.all(tickerPromises);
+                            results.forEach((r) => {
+                                if (r) tickers[r.coin] = r.price;
+                            });
                         }
-                    } else {
-                        throw publicError;
+                    } catch (tickerError) {
+                        console.warn(`[balances] Erro ao obter tickers para ${exchangeAcronym}:`, tickerError.message);
+                    }
+                } catch (publicError) {
+                    // Fallback para caso de erro geral ou falha na instância autenticada
+                    const authenticatedInstance = await crossMarketService.getCcxtInstance(exchangeAcronym, true);
+                    if (!authenticatedInstance) {
+                        throw new Error('Instância autenticada não disponível para ' + exchangeAcronym);
+                    }
+                    balanceData = await authenticatedInstance.fetchBalance();
+                    
+                    // Obter preços usando a instância autenticada para as moedas que têm saldo
+                    try {
+                        const activeCoins = Object.keys(balanceData.free || {}).filter((coin) => {
+                            const total = (balanceData.free[coin] || 0) + (balanceData.used[coin] || 0);
+                            return total > 0.000001 && coin !== 'USDT';
+                        });
+
+                        if (activeCoins.length > 0) {
+                            // Tentar carregar os mercados primeiro se necessário
+                            if (Object.keys(authenticatedInstance.markets || {}).length === 0) {
+                                await authenticatedInstance.loadMarkets().catch(() => {});
+                            }
+
+                            // Busca preços em paralelo apenas das moedas com saldo
+                            const tickerPromises = activeCoins.map(async (coin) => {
+                                const symbol = `${coin}/USDT`;
+                                // Verifica se o mercado existe antes de buscar
+                                if (authenticatedInstance.markets && authenticatedInstance.markets[symbol]) {
+                                    try {
+                                        const tick = await authenticatedInstance.fetchTicker(symbol);
+                                        return { coin, price: tick.last || tick.close };
+                                    } catch (e) {
+                                        return null;
+                                    }
+                                }
+                                return null;
+                            });
+
+                            const results = await Promise.all(tickerPromises);
+                            results.forEach((r) => {
+                                if (r) tickers[r.coin] = r.price;
+                            });
+                        }
+                    } catch (tickerError) {
+                        console.warn(`[balances] Erro ao obter tickers para ${exchangeAcronym}:`, tickerError.message);
                     }
                 }
 

@@ -7,43 +7,8 @@
     <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-    <div class="app-layout">
-        <aside class="sidebar">
-            <div class="sidebar-logo">
-                <span>◆</span> Arb<span>Trade</span>
-            </div>
-            <nav>
-                <a href="/cross-market.html" class="nav-item" data-section="cross-market">
-                    <span class="nav-icon">🔄</span>
-                    <span>Cross-Market</span>
-                </a>
-                <div class="nav-section">
-                    <div class="nav-section-title">Execução</div>
-                    <a href="/cross-market-execution.html" class="nav-item" data-section="cross-market-execution">
-                        <span class="nav-icon">▶️</span>
-                        <span>Execução</span>
-                    </a>
-                    <a href="/cross-market-balances.html" class="nav-item active" data-section="cross-market-balances">
-                        <span class="nav-icon">💰</span>
-                        <span>Saldos</span>
-                    </a>
-                </div>
-                <div class="nav-section">
-                    <div class="nav-section-title">Cadastro</div>
-                    <a href="/users.html" class="nav-item" target="_self">
-                        <span class="nav-icon">👤</span>
-                        <span>Usuários</span>
-                    </a>
-                    <a href="/exchanges.html" class="nav-item" target="_self">
-                        <span class="nav-icon">🏢</span>
-                        <span>Exchanges</span>
-                    </a>
-                </div>
-            </nav>
-        </aside>
-
-        <div class="main-content">
-            <main class="shell">
+    <main class="main-content" role="main">
+        <div class="shell">
                 <section class="hero">
                     <div class="hero-top">
                         <div>
@@ -51,6 +16,10 @@
                             <h1>Cross-Market Balances</h1>
                         </div>
                         <div class="hero-status-group">
+                            <div class="status-pill status-pill-wide" id="cm-total-usdt-pill" style="border-color: rgba(125, 249, 193, 0.4); background: rgba(125, 249, 193, 0.05);">
+                                <span class="status-caption" style="color: var(--accent);">Saldo Geral Estimado</span>
+                                <strong id="cm-total-usdt-value" style="font-family: var(--font-mono); font-size: 1.1rem; color: var(--text-primary);">$ 0.00</strong>
+                            </div>
                             <div class="status-pill" id="cm-bal-status">
                                 <span class="status-dot" id="cm-bal-dot"></span>
                                 <span id="cm-bal-label">Inicializando...</span>
@@ -76,7 +45,6 @@
                 </section>
             </main>
         </div>
-    </div>
 
     <script src="/js/config.js"></script>
     <script type="module" src="/app.js"></script>
@@ -219,6 +187,24 @@
             }).join('');
         }
 
+        // Armazena temporariamente os assets por corretora para computar a soma total em USDT
+        const exchangeAssetsMap = new Map();
+
+        function calculateTotalUsdt() {
+            let total = 0;
+            exchangeAssetsMap.forEach((assets) => {
+                assets.forEach((asset) => {
+                    if (asset && typeof asset.valueUsdt === 'number') {
+                        total += asset.valueUsdt;
+                    }
+                });
+            });
+            const totalEl = document.getElementById('cm-total-usdt-value');
+            if (totalEl) {
+                totalEl.textContent = '$ ' + total.toFixed(2);
+            }
+        }
+
         async function loadBalances(exchangeId) {
             const view = balanceViews.get(exchangeId);
             if (!view) return;
@@ -238,6 +224,9 @@
                 const exchangeBalance = balancesData.balances.find(b => b.exchange === exchangeId.toUpperCase());
                 const assets = exchangeBalance ? exchangeBalance.assets : [];
                 
+                exchangeAssetsMap.set(exchangeId, assets);
+                calculateTotalUsdt();
+
                 view.totalAssets.textContent = assets.length;
                 renderBalances(view, assets);
                 view.feedback.textContent = 'Saldos atualizados.';
