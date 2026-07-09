@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catálogo de Transferências - ArbTrade</title>
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+        .search-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border-card);
+            border-radius: var(--radius-lg);
+            padding: var(--space-4);
+            margin-bottom: var(--space-6);
+        }
+
+        .search-form {
+            display: flex;
+            align-items: flex-end;
+            gap: var(--space-4);
+            flex-wrap: wrap;
+        }
+
+        .form-field {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-2);
+            flex-grow: 1;
+            min-width: 200px;
+        }
+
+        .form-field label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .form-field select, .form-field input {
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border-card);
+            color: var(--text-primary);
+            padding: var(--space-2) var(--space-3);
+            border-radius: var(--radius-md);
+            outline: none;
+            font-size: 0.95rem;
+            transition: border-color 0.2s;
+        }
+
+        .form-field select:focus, .form-field input:focus {
+            border-color: var(--accent);
+        }
+
+        .results-box {
+            background: var(--bg-card);
+            border: 1px solid var(--border-card);
+            border-radius: var(--radius-lg);
+            padding: var(--space-4);
+            margin-bottom: var(--space-6);
+            display: none;
+        }
+
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-card);
+            padding-bottom: var(--space-2);
+            margin-bottom: var(--space-4);
+        }
+
+        .results-header h3 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .network-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: var(--space-4);
+        }
+
+        .network-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-card);
+            border-radius: var(--radius-md);
+            padding: var(--space-3);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: var(--space-3);
+        }
+
+        .network-title {
+            font-weight: 700;
+            color: var(--accent);
+            font-size: 0.95rem;
+        }
+
+        .network-meta-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+        }
+
+        .network-meta-row span {
+            color: var(--text-secondary);
+        }
+
+        .network-meta-row strong {
+            font-family: var(--font-mono);
+            color: var(--text-primary);
+        }
+
+        .catalog-table-box {
+            background: var(--bg-card);
+            border: 1px solid var(--border-card);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+        }
+
+        .table-responsive {
+            overflow-x: auto;
+        }
+
+        .catalog-table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.9rem;
+        }
+
+        .catalog-table th, .catalog-table td {
+            padding: var(--space-4);
+            border-bottom: 1px solid var(--border-card);
+        }
+
+        .catalog-table th {
+            background: rgba(255, 255, 255, 0.02);
+            color: var(--text-secondary);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.05em;
+        }
+
+        .catalog-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .btn-action-add {
+            background: rgba(125, 249, 193, 0.1);
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            padding: var(--space-1) var(--space-3);
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+            text-align: center;
+        }
+
+        .btn-action-add:hover {
+            background: var(--accent);
+            color: #000;
+        }
+
+        .btn-action-del {
+            background: rgba(231, 76, 60, 0.1);
+            border: 1px solid var(--danger);
+            color: var(--danger);
+            padding: var(--space-1) var(--space-3);
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+
+        .btn-action-del:hover {
+            background: var(--danger);
+            color: #fff;
+        }
+
+        .empty-catalog {
+            padding: var(--space-8);
+            text-align: center;
+            color: var(--text-secondary);
+        }
+    </style>
+</head>
+<body>
+    <main class="main-content" role="main">
+        <div class="shell">
+            <section class="hero">
+                <div class="hero-top">
+                    <div>
+                        <div class="eyebrow">Transferências</div>
+                        <h1>Catálogo de Rotas</h1>
+                    </div>
+                </div>
+                <p>Consulte redes, taxas e valores mínimos de transferências diretamente nas exchanges e cataloge as melhores possibilidades.</p>
+            </section>
+
+            <!-- Formulário de Busca -->
+            <section class="search-container">
+                <form id="search-form" class="search-form">
+                    <div class="form-field">
+                        <label for="select-exchange">Corretora Origem</label>
+                        <select id="select-exchange" required>
+                            <option value="">Selecione...</option>
+                        </select>
+                    </div>
+                    <div class="form-field">
+                        <label for="input-currency">Moeda Origem</label>
+                        <input type="text" id="input-currency" placeholder="Ex: USDT, BTC, ETH" required style="text-transform: uppercase;">
+                    </div>
+                    <div class="form-field">
+                        <label for="select-target-exchange">Corretora Destino</label>
+                        <select id="select-target-exchange" required>
+                            <option value="">Selecione...</option>
+                        </select>
+                    </div>
+                    <button class="primary" id="btn-search" type="submit" style="height: 38px; margin-bottom: 2px;">Buscar na Corretora</button>
+                </form>
+                <div id="search-feedback" class="mono" style="margin-top: var(--space-2); font-size: 0.85rem; color: var(--text-secondary);"></div>
+            </section>
+
+            <!-- Resultados da busca CCXT -->
+            <section class="results-box" id="results-box">
+                <div class="results-header">
+                    <h3 id="results-title">Redes Disponíveis</h3>
+                    <span id="results-subtitle" style="font-size: 0.85rem; color: var(--text-secondary);"></span>
+                </div>
+                <div class="network-cards" id="network-cards">
+                    <!-- Dinâmico -->
+                </div>
+            </section>
+
+            <!-- Tabela de Possibilidades Catalogadas -->
+            <section class="workspace-section">
+                <div class="section-heading">
+                    <div>
+                        <div class="eyebrow">Catálogo</div>
+                        <h2>Rotas Catalogadas</h2>
+                    </div>
+                </div>
+
+                <div class="catalog-table-box">
+                    <div class="table-responsive">
+                        <table class="catalog-table">
+                            <thead>
+                                <tr>
+                                    <th>Origem</th>
+                                    <th>Moeda</th>
+                                    <th>Rede</th>
+                                    <th>Taxa</th>
+                                    <th>Mínimo</th>
+                                    <th>Tempo</th>
+                                    <th>Destino (Endereço)</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="catalog-list">
+                                <tr>
+                                    <td colspan="8" class="empty-catalog">Carregando catálogo...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Modal de Transferência -->
+    <div id="transfer-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000; justify-content: center; align-items: center; padding: 20px;">
+        <div style="background: var(--bg-card); border: 1px solid var(--border-card); border-radius: var(--radius-lg); padding: var(--space-6); width: 100%; max-width: 450px; display: flex; flex-direction: column; gap: var(--space-4); box-shadow: 0 8px 32px rgba(0,0,0,0.5);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-card); padding-bottom: var(--space-2);">
+                <h3 style="margin: 0; font-size: 1.2rem; color: var(--text-primary);">Solicitar Transferência</h3>
+                <button id="btn-close-modal" style="background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 1.5rem; line-height: 1;">&times;</button>
+            </div>
+            
+            <div id="modal-mode-badge" style="padding: 6px var(--space-3); border-radius: var(--radius-md); font-size: 0.85rem; font-weight: 700; text-align: center;">
+                <!-- Dinâmico -->
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: var(--space-2); font-size: 0.9rem;">
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: var(--text-secondary);">Origem:</span>
+                    <strong id="modal-origin" class="mono">--</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: var(--text-secondary);">Destino:</span>
+                    <strong id="modal-target" class="mono">--</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: var(--text-secondary);">Rede:</span>
+                    <strong id="modal-network" class="mono">--</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: var(--text-secondary);">Taxa de Saque:</span>
+                    <strong id="modal-fee" class="mono">--</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: var(--text-secondary);">Saque Mínimo:</span>
+                    <strong id="modal-min" class="mono">--</strong>
+                </div>
+            </div>
+
+            <form id="transfer-execution-form" style="display: flex; flex-direction: column; gap: var(--space-4); margin-top: var(--space-2);">
+                <div class="form-field">
+                    <label for="input-transfer-amount">Quantidade a Transferir</label>
+                    <input type="number" id="input-transfer-amount" step="any" min="0" required placeholder="0.0">
+                </div>
+                <div style="display: flex; gap: var(--space-3); justify-content: flex-end; margin-top: var(--space-2);">
+                    <button type="button" id="btn-cancel-transfer" class="secondary" style="height: 38px;">Cancelar</button>
+                    <button type="submit" class="primary" id="btn-confirm-transfer" style="height: 38px;">Confirmar Transferência</button>
+                </div>
+            </form>
+            
+            <div id="transfer-execution-feedback" class="mono" style="font-size: 0.85rem; text-align: center; word-break: break-all; margin-top: var(--space-2);"></div>
+        </div>
+    </div>
+
+    <script src="/js/config.js"></script>
+    <script type="module">
+        import { buildApiUrl, escapeHtml, formatNumber, ALL_EXCHANGES, getExchangeTitle } from './js/shared.js';
+
+        const selectExchange = document.getElementById('select-exchange');
+        const selectTargetExchange = document.getElementById('select-target-exchange');
+        const inputCurrency = document.getElementById('input-currency');
+        const searchForm = document.getElementById('search-form');
+        const searchFeedback = document.getElementById('search-feedback');
+        const resultsBox = document.getElementById('results-box');
+        const resultsTitle = document.getElementById('results-title');
+        const resultsSubtitle = document.getElementById('results-subtitle');
+        const networkCards = document.getElementById('network-cards');
+        const catalogList = document.getElementById('catalog-list');
+
+        // Modal Elements
+        const transferModal = document.getElementById('transfer-modal');
+        const btnCloseModal = document.getElementById('btn-close-modal');
+        const btnCancelTransfer = document.getElementById('btn-cancel-transfer');
+        const transferForm = document.getElementById('transfer-execution-form');
+        const inputAmount = document.getElementById('input-transfer-amount');
+        const feedbackDiv = document.getElementById('transfer-execution-feedback');
+        const confirmBtn = document.getElementById('btn-confirm-transfer');
+
+        let currentRouteId = null;
+
+        btnCloseModal.addEventListener('click', closeTransferModal);
+        btnCancelTransfer.addEventListener('click', closeTransferModal);
+
+        function closeTransferModal() {
+            transferModal.style.display = 'none';
+            inputAmount.value = '';
+            feedbackDiv.textContent = '';
+            confirmBtn.disabled = false;
+        }
+
+        async function openTransferModal(dataset) {
+            currentRouteId = dataset.id;
+            
+            document.getElementById('modal-origin').textContent = getExchangeTitle(dataset.exchange.toLowerCase());
+            document.getElementById('modal-target').textContent = getExchangeTitle(dataset.target.toLowerCase());
+            document.getElementById('modal-network').textContent = dataset.network;
+            document.getElementById('modal-fee').textContent = `${formatNumber(dataset.fee, 6)} ${dataset.currency}`;
+            document.getElementById('modal-min').textContent = `${formatNumber(dataset.min, 6)} ${dataset.currency}`;
+
+            inputAmount.min = dataset.min;
+            inputAmount.placeholder = `Mínimo: ${dataset.min} ${dataset.currency}`;
+
+            const badge = document.getElementById('modal-mode-badge');
+            
+            // Buscar se o modo live está ativo para esta corretora específica no banco
+            try {
+                const token = localStorage.getItem('authToken');
+                const response = await fetch(buildApiUrl('exchanges'), {
+                    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                });
+                const data = await response.json();
+                const currentEx = data.exchanges?.find(e => e.acronym.toUpperCase() === dataset.exchange.toUpperCase());
+                const isLive = currentEx ? currentEx.enableLiveTrading === true : false;
+                
+                if (isLive) {
+                    badge.textContent = '⚠️ MODO REAL (LIVE TRADING) - SAQUE REAL';
+                    badge.style.background = 'rgba(231, 76, 60, 0.2)';
+                    badge.style.border = '1px solid var(--danger)';
+                    badge.style.color = 'var(--danger)';
+                } else {
+                    badge.textContent = '🛠️ MODO SIMULAÇÃO - SEM CUSTO REAL';
+                    badge.style.background = 'rgba(241, 196, 15, 0.2)';
+                    badge.style.border = '1px solid var(--warning)';
+                    badge.style.color = 'var(--warning)';
+                }
+            } catch {
+                badge.textContent = '🛠️ MODO SIMULAÇÃO - SEM CUSTO REAL';
+                badge.style.background = 'rgba(241, 196, 15, 0.2)';
+                badge.style.border = '1px solid var(--warning)';
+                badge.style.color = 'var(--warning)';
+            }
+
+            transferModal.style.display = 'flex';
+        }
+
+        transferForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const amount = parseFloat(inputAmount.value);
+            if (!amount || amount <= 0) return;
+
+            feedbackDiv.textContent = 'Efetuando saque na corretora...';
+            feedbackDiv.style.color = 'var(--text-secondary)';
+            confirmBtn.disabled = true;
+
+            try {
+                const token = localStorage.getItem('authToken');
+                const response = await fetch(buildApiUrl('transfers/execute'), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        catalogId: currentRouteId,
+                        amount: amount
+                    })
+                });
+
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Erro ao executar transferência.');
+                }
+
+                feedbackDiv.innerHTML = `
+                    <span style="color: var(--accent); font-weight: bold;">Sucesso!</span><br>
+                    <span style="font-size: 0.8rem;">${escapeHtml(data.message)}</span><br>
+                    <span style="font-size: 0.75rem; color: var(--text-secondary); word-break: break-all;">TxID: ${escapeHtml(data.transactionId)}</span>
+                `;
+                
+                setTimeout(() => {
+                    closeTransferModal();
+                    window.parent.showToast && window.parent.showToast('Transferência processada com sucesso!', 'success');
+                }, 5000);
+
+            } catch (err) {
+                feedbackDiv.textContent = err.message;
+                feedbackDiv.style.color = 'var(--danger)';
+                confirmBtn.disabled = false;
+            }
+        });
+
+        // Inicializar dropdowns de corretoras
+        ALL_EXCHANGES.forEach(ex => {
+            const opt1 = document.createElement('option');
+            opt1.value = ex;
+            opt1.textContent = getExchangeTitle(ex);
+            selectExchange.appendChild(opt1);
+
+            const opt2 = document.createElement('option');
+            opt2.value = ex;
+            opt2.textContent = getExchangeTitle(ex);
+            selectTargetExchange.appendChild(opt2);
+        });
+
+        // Buscar rotas salvas no catálogo
+        async function fetchCatalog() {
+            try {
+                const token = localStorage.getItem('authToken');
+                const response = await fetch(buildApiUrl('transfers/catalog'), {
+                    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                });
+                if (!response.ok) throw new Error('Falha ao buscar catálogo');
+                const data = await response.json();
+                renderCatalogTable(data.catalog);
+            } catch (err) {
+                catalogList.innerHTML = `<tr><td colspan="8" class="empty-catalog" style="color: var(--danger);">Erro: ${err.message}</td></tr>`;
+            }
+        }
+
+        function renderCatalogTable(catalog) {
+            if (!catalog || catalog.length === 0) {
+                catalogList.innerHTML = '<tr><td colspan="8" class="empty-catalog">Nenhuma rota catalogada ainda.</td></tr>';
+                return;
+            }
+
+            catalogList.innerHTML = catalog.map(item => {
+                const exchangeName = getExchangeTitle(item.exchange.toLowerCase());
+                const targetExName = item.targetExchange ? getExchangeTitle(item.targetExchange.toLowerCase()) : '--';
+                
+                let destInfo = '--';
+                if (item.depositAddress) {
+                    const shortAddr = item.depositAddress.length > 15 
+                        ? `${item.depositAddress.substring(0, 8)}...${item.depositAddress.slice(-4)}`
+                        : item.depositAddress;
+                    destInfo = `<strong>${escapeHtml(targetExName)}</strong><br>
+                                <small class="mono text-secondary copy-address" 
+                                    style="cursor: pointer; text-decoration: underline dashed rgba(255,255,255,0.3);" 
+                                    data-address="${escapeHtml(item.depositAddress)}" 
+                                    title="Clique para copiar: ${escapeHtml(item.depositAddress)}">
+                                    ${escapeHtml(shortAddr)} 📋
+                                </small>`;
+                    if (item.depositTag) {
+                        destInfo += `<br><small class="text-secondary">Tag: ${escapeHtml(item.depositTag)}</small>`;
+                    }
+                }
+
+                const canTransfer = !!item.depositAddress;
+                const transferBtn = canTransfer
+                    ? `<button class="btn-action-transfer primary" style="font-size:0.8rem; padding: 4px 8px;"
+                        data-id="${item._id}" 
+                        data-exchange="${escapeHtml(item.exchange)}" 
+                        data-currency="${escapeHtml(item.currency)}" 
+                        data-network="${escapeHtml(item.network)}" 
+                        data-target="${escapeHtml(item.targetExchange || '')}"
+                        data-fee="${item.fee}"
+                        data-min="${item.minAmount}">Transferir</button>`
+                    : `<button class="btn-action-transfer secondary" disabled style="opacity: 0.5; cursor: not-allowed; font-size:0.8rem; padding: 4px 8px;" title="Vincule a corretora de destino e endereço primeiro">Transferir</button>`;
+
+                return `
+                    <tr>
+                        <td><strong>${escapeHtml(exchangeName)}</strong></td>
+                        <td class="mono"><strong>${escapeHtml(item.currency)}</strong></td>
+                        <td class="mono text-secondary">${escapeHtml(item.network)}</td>
+                        <td class="mono">${formatNumber(item.fee, 6)} ${escapeHtml(item.currency)}</td>
+                        <td class="mono">${formatNumber(item.minAmount, 6)} ${escapeHtml(item.currency)}</td>
+                        <td class="mono">${escapeHtml(item.transferTime || 'N/A')}</td>
+                        <td>${destInfo}</td>
+                        <td>
+                            <div style="display: flex; gap: 6px;">
+                                ${transferBtn}
+                                <button class="btn-action-del" data-id="${item._id}" style="font-size:0.8rem; padding: 4px 8px;">Excluir</button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            // Bind de exclusão
+            document.querySelectorAll('.btn-action-del').forEach(btn => {
+                btn.addEventListener('click', () => removeCatalogItem(btn.dataset.id));
+            });
+
+            // Bind de transferência
+            document.querySelectorAll('.btn-action-transfer').forEach(btn => {
+                if (!btn.disabled) {
+                    btn.addEventListener('click', () => openTransferModal(btn.dataset));
+                }
+            });
+
+            // Bind de cópia de endereço
+            document.querySelectorAll('.copy-address').forEach(el => {
+                el.addEventListener('click', async () => {
+                    const address = el.dataset.address;
+                    if (!address) return;
+                    try {
+                        await navigator.clipboard.writeText(address);
+                        window.parent.showToast && window.parent.showToast('Endereço copiado para a área de transferência!', 'success');
+                    } catch (err) {
+                        alert('Falha ao copiar endereço: ' + err.message);
+                    }
+                });
+            });
+        }
+
+        // Remover item do catálogo
+        async function removeCatalogItem(id) {
+            if (!confirm('Deseja realmente remover esta rota do catálogo?')) return;
+            try {
+                const token = localStorage.getItem('authToken');
+                const response = await fetch(buildApiUrl(`transfers/catalog/${id}`), {
+                    method: 'DELETE',
+                    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                });
+                if (!response.ok) throw new Error('Erro ao remover rota do catálogo');
+                fetchCatalog();
+                window.parent.showToast && window.parent.showToast('Rota removida do catálogo!', 'success');
+            } catch (err) {
+                alert(`Erro: ${err.message}`);
+            }
+        }
+
+        // Submissão do formulário de busca
+        searchForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const exchangeId = selectExchange.value;
+            const currency = inputCurrency.value.trim().toUpperCase();
+
+            if (!exchangeId || !currency) return;
+
+            searchFeedback.textContent = 'Buscando informações na corretora via CCXT...';
+            searchFeedback.style.color = 'var(--text-secondary)';
+            resultsBox.style.display = 'none';
+
+            try {
+                const token = localStorage.getItem('authToken');
+                const response = await fetch(buildApiUrl(`transfers/lookup?exchangeId=${exchangeId}&currency=${currency}`), {
+                    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                });
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.error || 'Erro ao buscar dados de transferência');
+                }
+
+                const data = await response.json();
+                searchFeedback.textContent = '';
+                renderSearchResults(data);
+            } catch (err) {
+                searchFeedback.textContent = `Falha na consulta: ${err.message}`;
+                searchFeedback.style.color = 'var(--danger)';
+            }
+        });
+
+        function renderSearchResults(data) {
+            const exName = getExchangeTitle(data.exchange.toLowerCase());
+            const targetExId = selectTargetExchange.value;
+            const targetExName = getExchangeTitle(targetExId);
+
+            resultsTitle.textContent = `Redes de Transferência para ${escapeHtml(data.currency)}`;
+            resultsSubtitle.textContent = `De ${escapeHtml(exName)} para ${escapeHtml(targetExName)}`;
+            resultsBox.style.display = 'block';
+
+            if (!data.networks || data.networks.length === 0) {
+                networkCards.innerHTML = '<div style="grid-column: 1/-1; padding: 20px; text-align: center; color: var(--text-secondary);">Nenhuma rede de saque/depósito ativa encontrada no CCXT para esta moeda.</div>';
+                return;
+            }
+
+            networkCards.innerHTML = data.networks.map(net => {
+                const netSafeId = net.network.replace(/[^a-zA-Z0-9]/g, '');
+                return `
+                    <div class="network-card" id="card-${netSafeId}">
+                        <div>
+                            <div class="network-title">${escapeHtml(net.network)}</div>
+                            <div style="margin-top: var(--space-2); display: flex; flex-direction: column; gap: 4px;">
+                                <div class="network-meta-row">
+                                    <span>Taxa de Transferência:</span>
+                                    <strong>${formatNumber(net.fee, 6)} ${escapeHtml(data.currency)}</strong>
+                                </div>
+                                <div class="network-meta-row">
+                                    <span>Saldo Mínimo:</span>
+                                    <strong>${formatNumber(net.minAmount, 6)} ${escapeHtml(data.currency)}</strong>
+                                </div>
+                                <div class="network-meta-row">
+                                    <span>Chegada Estimada:</span>
+                                    <strong>${escapeHtml(net.transferTime || 'N/A')}</strong>
+                                </div>
+                                <div class="network-meta-row" id="addr-row-${netSafeId}" style="display:none; flex-direction:column; gap:2px; margin-top:8px; padding-top:8px; border-top:1px dashed rgba(255,255,255,0.1);">
+                                    <span style="font-weight:600; color:var(--accent);">Endereço de Depósito (${escapeHtml(targetExName)}):</span>
+                                    <strong class="mono" style="word-break:break-all; font-size:0.75rem; text-align:left;" id="addr-val-${netSafeId}">-</strong>
+                                    <span style="font-weight:600; color:var(--accent); display:none; margin-top:4px;" id="tag-label-${netSafeId}">Tag / Memo:</span>
+                                    <strong class="mono" style="display:none; font-size:0.75rem;" id="tag-val-${netSafeId}">-</strong>
+                                </div>
+                            </div>
+                        </div>
+                        <div style="display:flex; flex-direction:column; gap:8px; margin-top:12px;">
+                            <button class="secondary btn-action-address" style="width: 100%; font-size: 0.8rem; padding: 6px;" 
+                                data-exchange="${escapeHtml(targetExId)}"
+                                data-currency="${escapeHtml(data.currency)}"
+                                data-network="${escapeHtml(net.network)}"
+                                data-safeid="${netSafeId}">
+                                Obter Endereço Destino
+                            </button>
+                            <button class="btn-action-add" style="width: 100%;"
+                                id="btn-add-${netSafeId}"
+                                data-exchange="${escapeHtml(data.exchange)}"
+                                data-currency="${escapeHtml(data.currency)}"
+                                data-network="${escapeHtml(net.network)}"
+                                data-fee="${net.fee}"
+                                data-min="${net.minAmount}"
+                                data-time="${escapeHtml(net.transferTime || '')}"
+                                data-target-exchange="${escapeHtml(targetExId)}"
+                                data-deposit-address=""
+                                data-deposit-tag="">
+                                Adicionar ao Catálogo
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // Bind de obter endereço
+            document.querySelectorAll('.btn-action-address').forEach(btn => {
+                btn.addEventListener('click', () => fetchTargetAddress(btn));
+            });
+
+            // Bind de adição ao catálogo
+            document.querySelectorAll('.btn-action-add').forEach(btn => {
+                btn.addEventListener('click', () => addCatalogItem(btn.dataset));
+            });
+        }
+
+        // Buscar endereço de depósito no destino
+        async function fetchTargetAddress(btn) {
+            const { exchange, currency, network, safeid } = btn.dataset;
+            const originalText = btn.textContent;
+            btn.textContent = 'Buscando...';
+            btn.disabled = true;
+
+            try {
+                const token = localStorage.getItem('authToken');
+                const response = await fetch(buildApiUrl(`transfers/deposit-address?exchangeId=${exchange}&currency=${currency}&network=${network}`), {
+                    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                });
+
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.error || 'Erro ao buscar endereço');
+                }
+
+                const data = await response.json();
+
+                // Exibir endereço na tela
+                const addrRow = document.getElementById(`addr-row-${safeid}`);
+                const addrVal = document.getElementById(`addr-val-${safeid}`);
+                const tagLabel = document.getElementById(`tag-label-${safeid}`);
+                const tagVal = document.getElementById(`tag-val-${safeid}`);
+                
+                addrVal.textContent = data.address;
+                addrRow.style.display = 'flex';
+
+                if (data.tag) {
+                    tagVal.textContent = data.tag;
+                    tagLabel.style.display = 'inline';
+                    tagVal.style.display = 'inline';
+                } else {
+                    tagLabel.style.display = 'none';
+                    tagVal.style.display = 'none';
+                }
+
+                // Atualizar o dataset do botão "Adicionar ao Catálogo" para incluir o endereço e a tag obtidos
+                const addBtn = document.getElementById(`btn-add-${safeid}`);
+                if (addBtn) {
+                    addBtn.dataset.depositAddress = data.address;
+                    addBtn.dataset.depositTag = data.tag || '';
+                    addBtn.textContent = 'Vincular Rota (Salvar)';
+                }
+
+                btn.textContent = 'Endereço Obtido!';
+                btn.style.borderColor = 'var(--accent)';
+                btn.style.color = 'var(--accent)';
+            } catch (err) {
+                btn.textContent = 'Falha ao buscar';
+                btn.style.borderColor = 'var(--danger)';
+                btn.style.color = 'var(--danger)';
+                alert(`Erro ao buscar endereço de depósito: ${err.message}`);
+                btn.disabled = false;
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.style.borderColor = '';
+                    btn.style.color = '';
+                }, 3000);
+            }
+        }
+
+        // Adicionar item ao catálogo
+        async function addCatalogItem(dataset) {
+            try {
+                const token = localStorage.getItem('authToken');
+                const response = await fetch(buildApiUrl('transfers/catalog'), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        exchange: dataset.exchange,
+                        currency: dataset.currency,
+                        network: dataset.network,
+                        fee: parseFloat(dataset.fee) || 0,
+                        minAmount: parseFloat(dataset.min) || 0,
+                        transferTime: dataset.time || '',
+                        targetExchange: dataset.targetExchange || '',
+                        depositAddress: dataset.depositAddress || '',
+                        depositTag: dataset.depositTag || ''
+                    })
+                });
+                if (!response.ok) throw new Error('Falha ao adicionar rota ao catálogo');
+                
+                fetchCatalog();
+                window.parent.showToast && window.parent.showToast('Rota vinculada e catalogada com sucesso!', 'success');
+            } catch (err) {
+                alert(`Erro: ${err.message}`);
+            }
+        }
+
+        // Inicialização
+        fetchCatalog();
+    </script>
+</body>
+</html>

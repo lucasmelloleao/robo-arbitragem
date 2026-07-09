@@ -113,6 +113,9 @@ export function initManagementPage() {
             if (exchangeForm.elements.active) {
                 exchangeForm.elements.active.checked = Boolean(exchange.active);
             }
+            if (exchangeForm.elements.enableLiveTrading) {
+                exchangeForm.elements.enableLiveTrading.checked = Boolean(exchange.enableLiveTrading);
+            }
 
             function populateConfig(prefix, configObject) {
                 if (!configObject) {
@@ -146,6 +149,9 @@ export function initManagementPage() {
             }
             if (exchangeForm.elements.active) {
                 exchangeForm.elements.active.checked = true;
+            }
+            if (exchangeForm.elements.enableLiveTrading) {
+                exchangeForm.elements.enableLiveTrading.checked = false;
             }
             updateExchangePasswordField('');
         }
@@ -362,7 +368,8 @@ export function initManagementPage() {
             envInfo: formData.get('envInfo')?.trim(),
             notes: formData.get('notes')?.trim(),
             assetsMode: assetsModeValue.trim().toLowerCase(),
-            active: exchangeForm.elements.active.checked
+            active: exchangeForm.elements.active.checked,
+            enableLiveTrading: exchangeForm.elements.enableLiveTrading?.checked ?? false
         };
 
         function processConfig(prefix, form) {

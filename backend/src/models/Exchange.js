@@ -36,6 +36,10 @@ const exchangeSchema = new mongoose.Schema({
         type: Boolean,
         default: true
     },
+    enableLiveTrading: {
+        type: Boolean,
+        default: false
+    },
     assetsMode: {
         type: String,
         enum: ['list', 'all'],

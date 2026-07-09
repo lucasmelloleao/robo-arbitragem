@@ -62,6 +62,10 @@
                         <span class="nav-icon" aria-hidden="true">📋</span>
                         <span>Operações</span>
                     </button>
+                    <button class="nav-item" data-view="transfers" type="button">
+                        <span class="nav-icon" aria-hidden="true">💸</span>
+                        <span>Transferências</span>
+                    </button>
                 </div>
                 <div class="nav-section" role="separator">
                     <div class="nav-section-title">Cadastro</div>
@@ -323,6 +327,11 @@
             <section id="view-cross-market-trades" class="view-section" aria-label="Workspace de Cross Market Trades">
                 <iframe src="/cross-market-trades.html" class="iframe-shell" title="Operações Cross Market" loading="lazy"></iframe>
             </section>
+
+            <!-- Transfers Catalog -->
+            <section id="view-transfers" class="view-section" aria-label="Workspace de Transferências">
+                <iframe src="/transfers.html" class="iframe-shell" title="Catálogo de Transferências" loading="lazy"></iframe>
+            </section>
         </main>
 
         <!-- Footer -->
@@ -435,7 +444,7 @@
                 }
             }
 
-            if (viewName === 'arbitrage' || viewName === 'market-making' || viewName === 'cross-market' || viewName === 'cross-market-execution' || viewName === 'cross-market-balances' || viewName === 'cross-market-trades') {
+            if (viewName === 'arbitrage' || viewName === 'market-making' || viewName === 'cross-market' || viewName === 'cross-market-execution' || viewName === 'cross-market-balances' || viewName === 'cross-market-trades' || viewName === 'transfers') {
                 window.setTimeout(() => {
                     const app = window.app;
 

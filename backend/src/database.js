@@ -3,6 +3,7 @@ const User = require('./models/User');
 const Exchange = require('./models/Exchange');
 const CrossMarket = require('./models/CrossMarket');
 const CrossMarketTrade = require('./models/CrossMarketTrade');
+const TransferCatalog = require('./models/TransferCatalog');
 
 const databaseUri = process.env.MONGODB_URI;
 let isConnected = false;
@@ -341,6 +342,32 @@ async function getCrossMarketTradesCount(userId, filter = {}) {
     return CrossMarketTrade.countDocuments(queryFilter);
 }
 
+async function createTransferCatalogEntry(userId, data) {
+    assertDatabaseAvailable();
+    const query = { userId, exchange: data.exchange.toUpperCase(), currency: data.currency.toUpperCase(), network: data.network };
+    const update = { ...data, userId, exchange: data.exchange.toUpperCase(), currency: data.currency.toUpperCase() };
+    return TransferCatalog.findOneAndUpdate(query, update, {
+        new: true,
+        upsert: true,
+        runValidators: true
+    }).lean();
+}
+
+async function getTransferCatalogEntries(userId) {
+    assertDatabaseAvailable();
+    return TransferCatalog.find({ userId }).sort({ exchange: 1, currency: 1, network: 1 }).lean();
+}
+
+async function deleteTransferCatalogEntry(id, userId) {
+    assertDatabaseAvailable();
+    return TransferCatalog.findOneAndDelete({ _id: id, userId }).lean();
+}
+
+async function getTransferCatalogEntryById(id, userId) {
+    assertDatabaseAvailable();
+    return TransferCatalog.findOne({ _id: id, userId }).lean();
+}
+
 module.exports = {
     connect,
     disconnect,
@@ -368,5 +395,10 @@ module.exports = {
     toggleCrossMarketStrategy,
     createCrossMarketTrade,
     getCrossMarketTrades,
-    getCrossMarketTradesCount
+    getCrossMarketTradesCount,
+    // Transfer Catalog
+    createTransferCatalogEntry,
+    getTransferCatalogEntries,
+    deleteTransferCatalogEntry,
+    getTransferCatalogEntryById
 };

@@ -6,6 +6,7 @@ const { registerExchangeRoutes } = require('./exchanges');
 const { registerSubscriptionRoutes } = require('./subscriptions');
 const { registerCrossMarketRoutes } = require('./cross-market');
 const { registerAuthRoutes } = require('./auth');
+const { registerTransferRoutes } = require('./transfers');
 
 function createApiRouter(context) {
     const router = createRouter();
@@ -17,6 +18,7 @@ function createApiRouter(context) {
     registerMarketMakingRoutes(router);
     registerSubscriptionRoutes(router);
     registerCrossMarketRoutes(router);
+    registerTransferRoutes(router);
 
     return {
         handle: async (request, response, requestUrl) => {

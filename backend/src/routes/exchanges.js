@@ -27,7 +27,7 @@ async function createExchangeHandler({ request, response }) {
     if (!decoded) return;
     try {
         const body = await readJsonBody(request);
-        const { name, acronym, apiKey, secretKey, password, active, notes, assetsMode, arbitrageConfig, marketMakingConfig } = body;
+        const { name, acronym, apiKey, secretKey, password, active, enableLiveTrading, notes, assetsMode, arbitrageConfig, marketMakingConfig } = body;
 
         if (!name || !acronym) {
             sendJson(response, 400, { error: 'Campos obrigatórios: name, acronym' });
@@ -54,6 +54,7 @@ async function createExchangeHandler({ request, response }) {
             secretKey: typeof secretKey === 'string' && secretKey.trim() ? secretKey.trim() : undefined,
             password: typeof password === 'string' && password.trim() ? password.trim() : undefined,
             active: active ?? true,
+            enableLiveTrading: enableLiveTrading ?? false,
             notes: notes || '',
             assetsMode: assetsMode || 'list',
         };
@@ -110,6 +111,9 @@ async function updateExchangeHandler({ request, response, params, context }) {
         }
         if (typeof body.active === 'boolean') {
             updates.active = body.active;
+        }
+        if (typeof body.enableLiveTrading === 'boolean') {
+            updates.enableLiveTrading = body.enableLiveTrading;
         }
         if (body.assetsMode === undefined || body.assetsMode === null || body.assetsMode === '') {
             updates.assetsMode = 'list';
