@@ -1,0 +1,30 @@
+# Dependências e pacotes (ignora em qualquer subpasta)
+**/node_modules/
+bower_components/
+.npm/
+
+# Pastas de Build e Saída
+**/dist/
+**/build/
+out/
+.next/
+.nuxt/
+target/
+
+# Arquivos de ambiente e segredos (Evita que a IA leia suas senhas!)
+**/.env
+**/.env.*
+*.pem
+*.key
+
+# Logs e arquivos temporários
+*.log
+.npm/_logs/
+.eslintcache
+.DS_Store
+Thumbs.db
+
+# Pastas do próprio Git e do VS Code
+.git/
+.vscode/
+.idea/

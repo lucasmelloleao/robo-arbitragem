@@ -44,7 +44,7 @@ async function getCcxtInstance(exchangeAcronym, forLiveTrading = false) {
         if (!publicCcxtInstances[ccxtId]) {
             var PublicExchangeClass = ccxt[ccxtId];
             if (!PublicExchangeClass) return null;
-            
+
             publicCcxtInstances[ccxtId] = new PublicExchangeClass({
                 enableRateLimit: true,
                 timeout: 10000
@@ -62,13 +62,16 @@ async function getCcxtInstance(exchangeAcronym, forLiveTrading = false) {
 
         var ExchangeClass = ccxt[ccxtId];
         if (!ExchangeClass) return null;
-        
+
         const instance = new ExchangeClass({
             apiKey: credentials.apiKey,
             secret: credentials.secretKey,
             password: credentials.password, // Para exchanges como OKX
             enableRateLimit: true,
-            timeout: 20000 // Timeout maior para operações autenticadas
+            timeout: 20000, // Timeout maior para operações autenticadas
+            options: {
+                'createMarketBuyOrderRequiresPrice': false
+            }
         });
 
         privateCcxtInstances.set(exchangeAcronym, instance);
@@ -86,7 +89,7 @@ function log(level, message, data, strategyId) {
     const prefix = '[cross-market]';
     const ts = formatTimestamp();
     const logFn = level === 'error' ? console.error : level === 'warn' ? console.warn : console.log;
-    
+
     if (data) {
         logFn(prefix, '[' + ts + ']', '[' + level.toUpperCase() + ']', message, JSON.stringify(data));
     } else {
@@ -115,7 +118,7 @@ async function refreshStrategies() {
     try {
         const { getAllCrossMarketStrategies } = require('./database');
         const all = await getAllCrossMarketStrategies();
-        cachedStrategies = (all || []).filter(function(s) { return s.active; });
+        cachedStrategies = (all || []).filter(function (s) { return s.active; });
         log('info', 'Cache atualizado: ' + cachedStrategies.length + ' estrategia(s) ativa(s)');
     } catch (error) {
         log('error', 'Falha ao atualizar cache', { error: error.message });
@@ -133,39 +136,39 @@ async function fetchTickerPrice(exchangeAcronym, asset1, asset2) {
         if (!exchange) {
             throw new Error('Exchange nao suportada pelo CCXT: ' + exchangeAcronym);
         }
-        
+
         // Montar o par no formato CCXT: BASE/QUOTE
         // O CCXT automaticamente converte para o formato correto de cada exchange
         var symbol = asset2 + '/' + asset1;
-     
+
         /*
         log('info', 'Buscando ticker', {
             exchange: exchangeAcronym,
             symbol: symbol,
             ccxtId: exchange.id
         });*/
-        
+
         // Usar fetchTicker do CCXT que já retorna o preço atual (last)
         var ticker = await exchange.fetchTicker(symbol);
-        
+
         if (!ticker || typeof ticker.last !== 'number' || ticker.last <= 0) {
             throw new Error('Preco invalido via CCXT para ' + symbol + ' em ' + exchangeAcronym);
         }
-        
-      /*  log('info', 'Ticker obtido', {
-            exchange: exchangeAcronym,
-            symbol: symbol,
-            price: ticker.last,
-            bid: ticker.bid,
-            ask: ticker.ask
-        });
-        */
-        
+
+        /*  log('info', 'Ticker obtido', {
+              exchange: exchangeAcronym,
+              symbol: symbol,
+              price: ticker.last,
+              bid: ticker.bid,
+              ask: ticker.ask
+          });
+          */
+
         // Retorna o preço médio entre bid e ask se disponível, senão last
         if (ticker.bid && ticker.ask) {
             return (ticker.bid + ticker.ask) / 2;
         }
-        
+
         return ticker.last;
     } catch (error) {
         log('error', 'Falha ao buscar ticker via CCXT', {
@@ -307,61 +310,61 @@ async function executeScan(strategy) {
         liveExecution: null,
         error: null
     };
-    
+
     try {
-       /*
-        log('info', 'Executando scan', {
-            strategy: strategy.name,
-            pair: strategy.asset2 + '/' + strategy.asset1,
-            exchanges: strategy.exchange1 + ' vs ' + strategy.exchange2
-        }, strategy._id);
-        */
-       
+        /*
+         log('info', 'Executando scan', {
+             strategy: strategy.name,
+             pair: strategy.asset2 + '/' + strategy.asset1,
+             exchanges: strategy.exchange1 + ' vs ' + strategy.exchange2
+         }, strategy._id);
+         */
+
         // Buscar preços simultaneamente
         var [price1, price2] = await Promise.all([
             fetchTickerPrice(strategy.exchange1, strategy.asset1, strategy.asset2),
             fetchTickerPrice(strategy.exchange2, strategy.asset1, strategy.asset2)
         ]);
-        
+
         result.price1 = price1;
         result.price2 = price2;
-        
+
         if (price1 === null || price2 === null) {
             result.error = 'Nao foi possivel obter precos de uma ou ambas as exchanges';
             log('warn', 'Scan incompleto', { error: result.error }, strategy._id);
             return result;
         }
-        
+
         // Calcular spread
         var higherPrice = Math.max(price1, price2);
         var lowerPrice = Math.min(price1, price2);
         var spread = higherPrice - lowerPrice;
         var midPrice = (price1 + price2) / 2;
         var spreadPercent = (spread / midPrice) * 100;
-        
+
         result.spreadPercent = spreadPercent;
-        
+
         // Verificar se o spread atende o mínimo configurado
         var minSpread = strategy.minSpreadPercent || 0.1;
         var tradingFee = strategy.tradingFeePercent || 0.1;
         var totalCost = tradingFee;
         var netSpread = spreadPercent - totalCost;
-        
+
         // O lucro estimado agora é calculado sobre o valor da operação (em moeda de cotação)
         const quoteAmount = strategy.operationAmount;
         const estimatedProfitInQuote = (quoteAmount * netSpread) / 100;
         result.estimatedProfitPercent = netSpread;
         result.estimatedProfit = estimatedProfitInQuote;
-        
+
         if (netSpread > minSpread) {
             result.hasOpportunity = true;
-            
+
             if (price1 < price2) {
                 result.simulationAction = 'Comprar em ' + strategy.exchange1 + ' e vender em ' + strategy.exchange2;
             } else {
                 result.simulationAction = 'Comprar em ' + strategy.exchange2 + ' e vender em ' + strategy.exchange1;
             }
-            
+
             log('info', 'OPORTUNIDADE ENCONTRADA', {
                 strategy: strategy.name,
                 spread: spreadPercent.toFixed(4) + '%',
@@ -393,7 +396,7 @@ async function executeScan(strategy) {
         result.error = error.message;
         log('error', 'Erro no scan', { strategy: strategy.name, error: error.message }, strategy._id);
     }
-    
+
     return result;
 }
 
@@ -402,33 +405,46 @@ async function executeScan(strategy) {
  */
 function startStrategyScan(strategy) {
     var strategyId = String(strategy._id);
-    
-    // Se já existe um intervalo, não criar outro
+
+    // Se já existe um loop ativo, não criar outro
     if (scanIntervals.has(strategyId)) {
         log('warn', 'Scan ja em execucao para estrategia', { strategy: strategy.name }, strategy._id);
         return;
     }
-    
+
     var intervalMs = strategy.scanIntervalMs || 5000;
-    
+
     log('info', 'Iniciando scan continuo', {
         strategy: strategy.name,
         interval: intervalMs + 'ms'
     }, strategy._id);
-    
-    // Executar imediatamente
-    executeScan(strategy).then(function(result) {
-        emitScanResult(result);
-    });
-    
-    // Configurar intervalo
-    var intervalId = setInterval(function() {
-        executeScan(strategy).then(function(result) {
+
+    // Marca presença imediatamente para evitar dupla inicialização simultânea
+    scanIntervals.set(strategyId, true);
+
+    // tick() executa o scan e, só após terminar completamente (await),
+    // agenda a próxima chamada via setTimeout — garantindo execução 100% sequencial.
+    async function tick() {
+        // Se a estratégia foi pausada/removida, interrompe o ciclo silenciosamente
+        if (!scanIntervals.has(strategyId)) return;
+
+        try {
+            const result = await executeScan(strategy);
             emitScanResult(result);
-        });
-    }, intervalMs);
-    
-    scanIntervals.set(strategyId, intervalId);
+        } catch (err) {
+            log('error', 'Erro interno no ciclo de scan', { error: err.message }, strategy._id);
+        }
+
+        // Só agenda o próximo ciclo se o scan ainda estiver ativo
+        if (scanIntervals.has(strategyId)) {
+            var timeoutId = setTimeout(tick, intervalMs);
+            // Atualiza o Map com o id do timeout para permitir cancelamento
+            scanIntervals.set(strategyId, timeoutId);
+        }
+    }
+
+    // Inicia a primeira execução imediatamente (sem esperar intervalMs)
+    tick();
 }
 
 /**
@@ -436,9 +452,15 @@ function startStrategyScan(strategy) {
  */
 function stopStrategyScan(strategyId) {
     var id = String(strategyId);
-    
+
     if (scanIntervals.has(id)) {
-        clearInterval(scanIntervals.get(id));
+        var activeTimeout = scanIntervals.get(id);
+        // activeTimeout pode ser 'true' (placeholder do scan inicial ainda em execução)
+        // ou um ID de timeout numérico. clearTimeout(true) é inofensivo, mas a guarda
+        // deixa a intenção explícita.
+        if (activeTimeout !== true) {
+            clearTimeout(activeTimeout);
+        }
         scanIntervals.delete(id);
         log('info', 'Scan interrompido para estrategia', { strategyId: id }, id);
     }
@@ -449,11 +471,13 @@ function stopStrategyScan(strategyId) {
  */
 function stopAllScans() {
     log('info', 'Parando todos os scans em execucao: ' + scanIntervals.size);
-    
-    scanIntervals.forEach(function(intervalId, strategyId) {
-        clearInterval(intervalId);
+
+    scanIntervals.forEach(function (timeoutId) {
+        if (timeoutId !== true) {
+            clearTimeout(timeoutId);
+        }
     });
-    
+
     scanIntervals.clear();
 }
 
@@ -474,12 +498,12 @@ function emitScanResult(result) {
 async function initialize() {
     log('info', 'Inicializando servico Cross-Market');
     await refreshStrategies();
-    
+
     // Iniciar scan para cada estratégia ativa
-    cachedStrategies.forEach(function(strategy) {
+    cachedStrategies.forEach(function (strategy) {
         startStrategyScan(strategy);
     });
-    
+
     log('info', 'Servico Cross-Market inicializado com ' + cachedStrategies.length + ' estrategia(s)');
 }
 
@@ -490,11 +514,11 @@ async function restart() {
     log('info', 'Reiniciando servico Cross-Market');
     stopAllScans();
     await refreshStrategies();
-    
-    cachedStrategies.forEach(function(strategy) {
+
+    cachedStrategies.forEach(function (strategy) {
         startStrategyScan(strategy);
     });
-    
+
     log('info', 'Servico Cross-Market reiniciado com ' + cachedStrategies.length + ' estrategia(s)');
 }
 
@@ -506,7 +530,7 @@ function getStatus() {
         activeStrategies: cachedStrategies.length,
         runningScans: scanIntervals.size,
         opportunities: 0,
-        strategies: cachedStrategies.map(function(s) {
+        strategies: cachedStrategies.map(function (s) {
             return {
                 id: s._id,
                 name: s.name,
@@ -526,12 +550,12 @@ function getStatus() {
 function getLogs(limit = 200, strategyId) {
     const safeLimit = Math.min(Math.max(Number(limit) || 200, 1), MAX_LOGS);
     let logs = logsStore;
-    
+
     // Filtrar por strategyId se fornecido
     if (strategyId) {
         logs = logs.filter(log => log.strategyId === strategyId);
     }
-    
+
     return logs.slice(-safeLimit).reverse();
 }
 
@@ -564,7 +588,7 @@ module.exports = {
     getPublicCcxtInstance,
     getCcxtInstance,
     onScanResult: {
-        get: function() { return onScanResult; },
-        set: function(fn) { onScanResult = fn; }
+        get: function () { return onScanResult; },
+        set: function (fn) { onScanResult = fn; }
     }
 };

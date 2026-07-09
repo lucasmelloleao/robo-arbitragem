@@ -174,6 +174,11 @@ async function getAllUsers() {
     return User.find({}, { password: 0 }).lean();
 }
 
+async function deleteUser(username) {
+    assertDatabaseAvailable();
+    return User.findOneAndDelete({ username }).lean();
+}
+
 async function getAllExchanges() {
     assertDatabaseAvailable();
     const exchanges = await Exchange.find({}).select('+secretKey +password').sort({ acronym: 1 }).lean();
@@ -303,6 +308,7 @@ module.exports = {
     getUserByEmail,
     createUser,
     updateUserStopTrader,
+    deleteUser,
     getAllUsers,
     getAllExchanges,
     getExchangeByAcronym,

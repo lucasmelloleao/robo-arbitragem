@@ -37,7 +37,7 @@ async function createUserHandler({ request, response }) {
         }
 
         const user = await createUser(userData);
-        const { ...userWithoutPassword } = user;
+        const { password, ...userWithoutPassword } = user;
         sendJson(response, 201, { user: userWithoutPassword });
     } catch (error) {
         if (error.code === 11000) {
@@ -59,7 +59,7 @@ async function updateUserHandler({ request, response, params }) {
             return;
         }
 
-        const { ...userWithoutPassword } = user;
+        const { password, ...userWithoutPassword } = user;
         sendJson(response, 200, { user: userWithoutPassword });
     } catch (error) {
         sendJson(response, 400, { error: error.message });

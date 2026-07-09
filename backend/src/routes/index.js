@@ -5,15 +5,17 @@ const { registerUserRoutes } = require('./users');
 const { registerExchangeRoutes } = require('./exchanges');
 const { registerSubscriptionRoutes } = require('./subscriptions');
 const { registerCrossMarketRoutes } = require('./cross-market');
+const { registerAuthRoutes } = require('./auth');
 
 function createApiRouter(context) {
     const router = createRouter();
 
-    registerUserRoutes(router, context);
-    registerExchangeRoutes(router, context);
-    registerArbitrageRoutes(router, context);
-    registerMarketMakingRoutes(router, context);
-    registerSubscriptionRoutes(router, context);
+    registerAuthRoutes(router);
+    registerUserRoutes(router);
+    registerExchangeRoutes(router);
+    registerArbitrageRoutes(router);
+    registerMarketMakingRoutes(router);
+    registerSubscriptionRoutes(router);
     registerCrossMarketRoutes(router);
 
     return {

@@ -44,8 +44,9 @@ function createAppServer() {
     const services = new Map();
     const marketMakingServices = new Map();
     const publicDirs = [
-        path.join(__dirname, '..', '..', 'frontend', 'public'),
-        path.join(__dirname, '..', '..', 'public')
+        path.join(__dirname, '..', 'frontend', 'public'),
+        path.join(__dirname, '..', 'public'),
+        path.join(__dirname, 'public')
     ];
     const socketSubscriptions = new Map();
     const socketMarketMakingSubscriptions = new Map();

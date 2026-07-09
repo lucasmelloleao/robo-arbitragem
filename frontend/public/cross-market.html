@@ -290,6 +290,7 @@
         var editingId = null;
         var strategies = [];
         var scanResults = {};
+        var runningScans = new Set(); // Estratégias com scan contínuo rodando
 
         // ===== DOM Elements =====
         var formContainer = document.getElementById('cm-form-container');
@@ -441,6 +442,7 @@
                     }
                 }
 
+                var isRunningScan = runningScans.has(s._id);
                 return '<div class="cm-strategy-card" style="' + (s.active ? '' : 'opacity: 0.6;') + '">' +
                     '<div class="cm-strategy-header">' +
                     '<h3 class="cm-strategy-title">' + escapeHtml(s.name) + '</h3>' +
@@ -457,7 +459,7 @@
                     '<div class="cm-actions">' +
                     '<button class="secondary" onclick="editStrategy(\'' + s._id + '\')">Editar</button>' +
                     '<button class="secondary" onclick="toggleStrategy(\'' + s._id + '\')">' + (s.active ? 'Desativar' : 'Ativar') + '</button>' +
-                    '<button class="secondary" onclick="runScan(\'' + s._id + '\')">Executar Scan</button>' +
+                    '<button class="secondary" onclick="toggleContinuousScan(\'' + s._id + '\')">' + (isRunningScan ? 'Parar Scan' : 'Executar Scan') + '</button>' +
                     '<button class="secondary button-danger" onclick="deleteStrategy(\'' + s._id + '\')">Excluir</button>' +
                     '</div>' +
                     '</div>';
@@ -510,6 +512,71 @@
                 showToast(error.message, 'error');
             }
         }
+
+        async function toggleContinuousScan(id) {
+            try {
+                if (runningScans.has(id)) {
+                    // Parar scan contínuo
+                    await apiFetch('cross-market/' + encodeURIComponent(id) + '/unsubscribe', { method: 'GET' });
+                    runningScans.delete(id);
+                    showToast('Scan cont\u00ednuo parado!', 'info');
+                } else {
+                    // Iniciar scan contínuo
+                    var result = await apiFetch('cross-market/' + encodeURIComponent(id) + '/subscribe', { method: 'GET' });
+                    runningScans.add(id);
+                    showToast('Scan cont\u00ednuo iniciado!', 'success');
+                    
+                    // Iniciar loop de atualização
+                    startScanLoop(id);
+                }
+                renderStrategies();
+                await loadStatus();
+            } catch (error) {
+                showToast(error.message, 'error');
+            }
+        }
+
+        function startScanLoop(id) {
+            // Limpar loop anterior se existir
+            if (window.scanIntervals && window.scanIntervals[id]) {
+                clearInterval(window.scanIntervals[id]);
+            }
+            
+            // Criar novo intervalo
+            if (!window.scanIntervals) {
+                window.scanIntervals = {};
+            }
+            
+            window.scanIntervals[id] = setInterval(async function() {
+                if (!runningScans.has(id)) {
+                    clearInterval(window.scanIntervals[id]);
+                    return;
+                }
+                
+                try {
+                    var result = await apiFetch('cross-market/' + encodeURIComponent(id) + '/scan');
+                    if (result.scan) {
+                        scanResults[id] = result.scan;
+                        renderStrategies();
+                        
+                        if (result.scan.hasOpportunity) {
+                            showToast('Oportunidade detectada!', 'success');
+                        }
+                    }
+                } catch (error) {
+                    console.error('Erro no scan cont\u00ednuo:', error);
+                }
+            }, 3000); // Atualizar a cada 3 segundos
+        }
+        
+        // Limpar todos os intervalos quando a página for fechada
+        window.addEventListener('beforeunload', function() {
+            if (window.scanIntervals) {
+                Object.values(window.scanIntervals).forEach(function(interval) {
+                    clearInterval(interval);
+                });
+            }
+        });
 
         async function runScan(id) {
             try {

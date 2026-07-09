@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Robô de Arbitragem</title>
+    <link rel="stylesheet" href="/css/styles.css">
+    <script>
+        // Redireciona para o login se não houver token
+        if (!localStorage.getItem('authToken')) {
+            window.location.href = '/login.html';
+        }
+    </script>
+</head>
+<body>
+    <header class="main-header">
+        <div class="header-content">
+            <h1>Dashboard de Arbitragem</h1>
+            <div class="header-meta">
+                <div id="socket-status" class="socket-status">
+                    <span id="socket-status-pill" class="socket-status-pill" data-socket-state="disconnected"></span>
+                    <span id="socket-status-label">Desconectado</span>
+                </div>
+                <div id="mode-label" class="mode-label">Carregando...</div>
+            </div>
+        </div>
+        <nav class="main-nav">
+            <a href="/index.html" class="nav-link active">Dashboard</a>
+            <a href="/cross-market.html" class="nav-link">Cross-Market</a>
+            <a href="/management.html" class="nav-link">Gerenciamento</a>
+            <a href="#" id="logout-button" class="nav-link">Sair</a>
+        </nav>
+    </header>
+
+    <main class="container">
+        <section class="panel global-actions-panel">
+            <div class="panel-header">
+                <h2>Ações Globais</h2>
+                <div id="last-update-label" class="panel-header-meta">Aguardando atualização...</div>
+            </div>
+            <div class="actions">
+                <button id="run-all" class="primary">Executar todas</button>
+                <button id="listen-all" class="secondary">Escutar todas</button>
+                <button id="refresh-all" class="secondary">Atualizar todas</button>
+            </div>
+            <div id="feedback" class="feedback">Pronto para iniciar.</div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-header">
+                <h2 id="market-making-panel-title">Market Making</h2>
+            </div>
+            <div class="actions">
+                <button id="run-market-making" class="primary">Executar MM</button>
+                <button id="listen-market-making" class="secondary">Escutar MM</button>
+                <button id="cancel-market-making-orders" class="secondary" disabled>Cancelar ordens MM</button>
+            </div>
+            <div id="market-making-summary" class="feedback">Aguardando status de market making...</div>
+            <div class="grid market-making-grid">
+                <div class="stack">
+                    <div class="market-making-details">
+                        <article class="status-card">
+                            <span class="status-card-label">Alvo</span>
+                            <span id="market-making-target" class="status-card-value">Aguardando...</span>
+                        </article>
+                        <article class="status-card">
+                            <span class="status-card-label">Última execução</span>
+                            <span id="market-making-last-run" class="status-card-value">Aguardando...</span>
+                        </article>
+                        <article class="status-card">
+                            <span class="status-card-label">Modo</span>
+                            <span id="market-making-mode" class="status-card-value">Aguardando...</span>
+                        </article>
+                        <article class="status-card">
+                            <span class="status-card-label">Loop</span>
+                            <span id="market-making-loop" class="status-card-value">Aguardando...</span>
+                        </article>
+                    </div>
+                    <div id="market-making-metrics" class="metrics">
+                        <div class="empty">Sem dados de market making ainda.</div>
+                    </div>
+                    <section class="panel exchange-section">
+                        <h2>Execução ativa</h2>
+                        <div id="market-making-active-execution" class="cards">
+                            <div class="empty">Nenhuma ordem pendente de market making.</div>
+                        </div>
+                    </section>
+                </div>
+                <div class="stack">
+                    <section class="panel exchange-section">
+                        <h2>Oportunidades favoráveis</h2>
+                        <div id="market-making-favorable-opportunities" class="cards">
+                            <div class="empty">Nenhuma oportunidade favorável registrada ainda.</div>
+                        </div>
+                    </section>
+                    <section class="panel exchange-section">
+                        <h2>Histórico de execuções</h2>
+                        <div id="market-making-history" class="cards">
+                            <div class="empty">Nenhuma execução de market making ainda.</div>
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-header">
+                <h2>Market Making · Exchanges</h2>
+                <div class="actions actions-compact">
+                    <button id="listen-market-making-all" class="secondary">Escutar MM todas</button>
+                </div>
+            </div>
+            <div id="market-making-grid" class="grid-gadgets">
+                <div class="empty">Carregando exchanges para market making...</div>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="panel-header">
+                <h2>Arbitragem Triangular · Exchanges</h2>
+            </div>
+            <div id="exchange-grid" class="grid-panels">
+                <div class="empty">Carregando exchanges para arbitragem...</div>
+            </div>
+        </section>
+    </main>
+
+    <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+    <script>
+        // Define a URL da API globalmente para os scripts
+        window.API_URL = 'http://localhost:8081';
+    </script>
+    <script type="module" src="/app.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const logoutButton = document.getElementById('logout-button');
+            if (logoutButton) {
+                logoutButton.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    localStorage.removeItem('authToken');
+                    window.location.href = '/login.html';
+                });
+            }
+        });
+    </script>
+</body>
+</html>

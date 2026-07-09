@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Robô de Arbitragem</title>
+    <link rel="stylesheet" href="/css/styles.css">
+    <link rel="stylesheet" href="/css/login.css">
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-box">
+            <header class="login-header">
+                <h1>Acessar Painel</h1>
+                <p>Use suas credenciais para entrar no sistema.</p>
+            </header>
+            <form id="login-form" class="login-form">
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" required placeholder="seu@email.com">
+                </div>
+                <div class="form-group">
+                    <label for="password">Senha</label>
+                    <input type="password" id="password" name="password" required placeholder="Sua senha">
+                </div>
+                <div id="login-feedback" class="feedback"></div>
+                <div class="form-actions">
+                    <button type="submit" id="login-button" class="primary">Entrar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+    <script>
+        // Define a URL da API globalmente para os scripts
+        window.API_URL = 'http://localhost:8081';
+    </script>
+    <script type="module" src="/js/login.js"></script>
+</body>
+</html>

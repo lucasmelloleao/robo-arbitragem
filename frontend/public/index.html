@@ -7,6 +7,12 @@
     <meta name="theme-color" content="#0d1117">
     <title>ArbTrade - Painel Multi-Exchange</title>
     <link rel="stylesheet" href="/styles.css">
+    <script>
+        // Redireciona para o login se não houver token de autenticação
+        if (!localStorage.getItem('authToken')) {
+            window.location.href = '/login.html';
+        }
+    </script>
 </head>
 <body>
     <!-- Toast Container -->
