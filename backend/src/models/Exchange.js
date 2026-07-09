@@ -1,6 +1,12 @@
 const mongoose = require('mongoose');
 
 const exchangeSchema = new mongoose.Schema({
+    userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: [true, 'Usuário é obrigatório'],
+        index: true
+    },
     name: {
         type: String,
         required: [true, 'Nome da corretora é obrigatório'],
@@ -9,7 +15,6 @@ const exchangeSchema = new mongoose.Schema({
     acronym: {
         type: String,
         required: [true, 'Sigla da corretora é obrigatória'],
-        unique: true,
         trim: true,
         uppercase: true
     },
@@ -79,5 +84,8 @@ const exchangeSchema = new mongoose.Schema({
         updatedAt: true
     }
 });
+
+// Índice composto: um usuário não pode ter duas exchanges com a mesma sigla
+exchangeSchema.index({ userId: 1, acronym: 1 }, { unique: true });
 
 module.exports = mongoose.model('Exchange', exchangeSchema);

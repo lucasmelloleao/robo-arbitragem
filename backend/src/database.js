@@ -179,9 +179,12 @@ async function deleteUser(username) {
     return User.findOneAndDelete({ username }).lean();
 }
 
-async function getAllExchanges() {
+// ------- Exchange (API — filtrado por userId) -------
+
+async function getAllExchanges(userId) {
     assertDatabaseAvailable();
-    const exchanges = await Exchange.find({}).select('+secretKey +password').sort({ acronym: 1 }).lean();
+    const filter = userId ? { userId } : {};
+    const exchanges = await Exchange.find(filter).select('+secretKey +password').sort({ acronym: 1 }).lean();
     const sanitized = exchanges.map(sanitizeExchange);
     // Garante que a MEXC apareça primeiro na lista
     sanitized.sort((a, b) => {
@@ -193,6 +196,7 @@ async function getAllExchanges() {
     return sanitized;
 }
 
+// Uso interno pelos serviços de background (sem contexto de usuário)
 async function getExchangeByAcronym(acronym) {
     assertDatabaseAvailable();
     return Exchange.findOne({ acronym: String(acronym || '').trim().toUpperCase() })
@@ -200,9 +204,11 @@ async function getExchangeByAcronym(acronym) {
         .lean();
 }
 
-async function getActiveExchangeStatuses() {
+// Retorna status de exchanges do usuário (para controle de abas no frontend)
+async function getActiveExchangeStatuses(userId) {
     assertDatabaseAvailable();
-    const exchanges = await Exchange.find({}).select('acronym active').lean();
+    const filter = userId ? { userId } : {};
+    const exchanges = await Exchange.find(filter).select('acronym active').lean();
     const statusMap = {};
     for (const ex of exchanges) {
         statusMap[ex.acronym] = ex.active;
@@ -218,6 +224,7 @@ async function getExchangeStatusByAcronym(acronym) {
     return exchange ? exchange.active : null;
 }
 
+// Uso interno pelos serviços de background (sem contexto de usuário)
 async function getExchangeCredentialsByAcronym(acronym) {
     assertDatabaseAvailable();
     return Exchange.findOne({ acronym: String(acronym || '').trim().toUpperCase() })
@@ -225,76 +232,79 @@ async function getExchangeCredentialsByAcronym(acronym) {
         .lean();
 }
 
-async function createExchange(exchangeData) {
+async function createExchange(userId, exchangeData) {
     assertDatabaseAvailable();
-    const exchange = new Exchange(exchangeData);
+    const exchange = new Exchange({ ...exchangeData, userId });
     await exchange.save();
     return sanitizeExchange(exchange);
 }
 
-async function updateExchange(id, updates) {
+async function updateExchange(id, userId, updates) {
     assertDatabaseAvailable();
-    const exchange = await Exchange.findByIdAndUpdate(
-        id,
+    // Garante que o documento pertence ao usuário antes de atualizar
+    const exchange = await Exchange.findOneAndUpdate(
+        { _id: id, userId },
         updates,
         { returnDocument: 'after' }
     ).select('+secretKey +password').lean();
     return sanitizeExchange(exchange);
 }
 
-async function deleteExchange(id) {
+async function deleteExchange(id, userId) {
     assertDatabaseAvailable();
-    const exchange = await Exchange.findByIdAndDelete(id);
-    return exchange;
+    return Exchange.findOneAndDelete({ _id: id, userId });
 }
 
-async function toggleExchangeStatus(id) {
+async function toggleExchangeStatus(id, userId) {
     assertDatabaseAvailable();
-    const exchange = await Exchange.findById(id).select('+secretKey +password');
+    const exchange = await Exchange.findOne({ _id: id, userId }).select('+secretKey +password');
     if (!exchange) return null;
-    
+
     exchange.active = !exchange.active;
     await exchange.save();
 
     return sanitizeExchange(exchange);
 }
 
-// ===== Cross-Market Strategy =====
+// ------- Cross-Market Strategy (API — filtrado por userId) -------
 
-async function getAllCrossMarketStrategies() {
+// Versão sem filtro usada pelo cross-market-service (background)
+async function getAllCrossMarketStrategies(userId) {
     assertDatabaseAvailable();
-    return CrossMarket.find({}).sort({ created_at: -1 }).lean();
+    const filter = userId ? { userId } : {};
+    return CrossMarket.find(filter).sort({ created_at: -1 }).lean();
 }
 
-async function getCrossMarketStrategyById(id) {
+async function getCrossMarketStrategyById(id, userId) {
     assertDatabaseAvailable();
-    return CrossMarket.findById(id).lean();
+    const filter = userId ? { _id: id, userId } : { _id: id };
+    return CrossMarket.findOne(filter).lean();
 }
 
-async function createCrossMarketStrategy(data) {
+async function createCrossMarketStrategy(userId, data) {
     assertDatabaseAvailable();
-    const strategy = new CrossMarket(data);
+    const strategy = new CrossMarket({ ...data, userId });
     await strategy.save();
     return strategy.toObject();
 }
 
-async function updateCrossMarketStrategy(id, updates) {
+async function updateCrossMarketStrategy(id, userId, updates) {
     assertDatabaseAvailable();
-    return CrossMarket.findByIdAndUpdate(
-        id,
+    return CrossMarket.findOneAndUpdate(
+        { _id: id, userId },
         updates,
         { returnDocument: 'after' }
     ).lean();
 }
 
-async function deleteCrossMarketStrategy(id) {
+async function deleteCrossMarketStrategy(id, userId) {
     assertDatabaseAvailable();
-    return CrossMarket.findByIdAndDelete(id).lean();
+    return CrossMarket.findOneAndDelete({ _id: id, userId }).lean();
 }
 
-async function toggleCrossMarketStrategy(id) {
+async function toggleCrossMarketStrategy(id, userId) {
     assertDatabaseAvailable();
-    const strategy = await CrossMarket.findById(id);
+    const strategy = await CrossMarket.findOne({ _id: id, userId });
     if (!strategy) return null;
     strategy.active = !strategy.active;
     await strategy.save();

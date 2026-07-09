@@ -9,20 +9,25 @@ const {
     toggleCrossMarketStrategy
 } = require('../database');
 const crossMarketService = require('../cross-market-service');
+const { verifyToken } = require('../middleware/auth-middleware');
 
-async function listStrategies({ response }) {
+async function listStrategies({ request, response }) {
+    const decoded = verifyToken(request, response);
+    if (!decoded) return;
     try {
-        const strategies = await getAllCrossMarketStrategies();
+        const strategies = await getAllCrossMarketStrategies(decoded.id);
         sendJson(response, 200, { strategies });
     } catch (error) {
         sendJson(response, 500, { error: error.message });
     }
 }
 
-async function getStrategyById({ response, params }) {
+async function getStrategyById({ request, response, params }) {
+    const decoded = verifyToken(request, response);
+    if (!decoded) return;
     try {
         const { id } = params;
-        const strategy = await getCrossMarketStrategyById(id);
+        const strategy = await getCrossMarketStrategyById(id, decoded.id);
         if (!strategy) {
             sendJson(response, 404, { error: 'Estratégia não encontrada' });
             return;
@@ -34,6 +39,8 @@ async function getStrategyById({ response, params }) {
 }
 
 async function createStrategy({ request, response }) {
+    const decoded = verifyToken(request, response);
+    if (!decoded) return;
     try {
         const body = await readJsonBody(request);
         const { name, exchange1, exchange2, asset1, asset2, operationAmount } = body;
@@ -68,7 +75,7 @@ async function createStrategy({ request, response }) {
             notes: body.notes || ''
         };
 
-        const strategy = await createCrossMarketStrategy(strategyData);
+        const strategy = await createCrossMarketStrategy(decoded.id, strategyData);
 
         // Reiniciar serviço para incluir nova estratégia
         await crossMarketService.restart();
@@ -84,11 +91,13 @@ async function createStrategy({ request, response }) {
 }
 
 async function updateStrategy({ request, response, params }) {
+    const decoded = verifyToken(request, response);
+    if (!decoded) return;
     try {
         const { id } = params;
         const body = await readJsonBody(request);
 
-        const existing = await getCrossMarketStrategyById(id);
+        const existing = await getCrossMarketStrategyById(id, decoded.id);
         if (!existing) {
             sendJson(response, 404, { error: 'Estratégia não encontrada' });
             return;
@@ -96,45 +105,19 @@ async function updateStrategy({ request, response, params }) {
 
         const updates = {};
 
-        if (typeof body.name === 'string' && body.name.trim()) {
-            updates.name = body.name.trim();
-        }
-        if (typeof body.exchange1 === 'string' && body.exchange1.trim()) {
-            updates.exchange1 = body.exchange1.trim().toUpperCase();
-        }
-        if (typeof body.exchange2 === 'string' && body.exchange2.trim()) {
-            updates.exchange2 = body.exchange2.trim().toUpperCase();
-        }
-        if (typeof body.asset1 === 'string' && body.asset1.trim()) {
-            updates.asset1 = body.asset1.trim().toUpperCase();
-        }
-        if (typeof body.asset2 === 'string' && body.asset2.trim()) {
-            updates.asset2 = body.asset2.trim().toUpperCase();
-        }
-        if (body.operationAmount !== undefined) {
-            updates.operationAmount = Number(body.operationAmount);
-        }
-        if (body.minSpreadPercent !== undefined) {
-            updates.minSpreadPercent = Number(body.minSpreadPercent);
-        }
-        if (body.maxSlippagePercent !== undefined) {
-            updates.maxSlippagePercent = Number(body.maxSlippagePercent);
-        }
-        if (body.tradingFeePercent !== undefined) {
-            updates.tradingFeePercent = Number(body.tradingFeePercent);
-        }
-        if (body.scanIntervalMs !== undefined) {
-            updates.scanIntervalMs = Number(body.scanIntervalMs);
-        }
-        if (typeof body.enableLiveTrading === 'boolean') {
-            updates.enableLiveTrading = body.enableLiveTrading;
-        }
-        if (typeof body.active === 'boolean') {
-            updates.active = body.active;
-        }
-        if (typeof body.notes === 'string') {
-            updates.notes = body.notes.trim();
-        }
+        if (typeof body.name === 'string' && body.name.trim()) updates.name = body.name.trim();
+        if (typeof body.exchange1 === 'string' && body.exchange1.trim()) updates.exchange1 = body.exchange1.trim().toUpperCase();
+        if (typeof body.exchange2 === 'string' && body.exchange2.trim()) updates.exchange2 = body.exchange2.trim().toUpperCase();
+        if (typeof body.asset1 === 'string' && body.asset1.trim()) updates.asset1 = body.asset1.trim().toUpperCase();
+        if (typeof body.asset2 === 'string' && body.asset2.trim()) updates.asset2 = body.asset2.trim().toUpperCase();
+        if (body.operationAmount !== undefined) updates.operationAmount = Number(body.operationAmount);
+        if (body.minSpreadPercent !== undefined) updates.minSpreadPercent = Number(body.minSpreadPercent);
+        if (body.maxSlippagePercent !== undefined) updates.maxSlippagePercent = Number(body.maxSlippagePercent);
+        if (body.tradingFeePercent !== undefined) updates.tradingFeePercent = Number(body.tradingFeePercent);
+        if (body.scanIntervalMs !== undefined) updates.scanIntervalMs = Number(body.scanIntervalMs);
+        if (typeof body.enableLiveTrading === 'boolean') updates.enableLiveTrading = body.enableLiveTrading;
+        if (typeof body.active === 'boolean') updates.active = body.active;
+        if (typeof body.notes === 'string') updates.notes = body.notes.trim();
 
         if (Object.keys(updates).length === 0) {
             sendJson(response, 400, { error: 'Nenhum campo válido para atualização' });
@@ -146,9 +129,8 @@ async function updateStrategy({ request, response, params }) {
             return;
         }
 
-        const strategy = await updateCrossMarketStrategy(id, updates);
+        const strategy = await updateCrossMarketStrategy(id, decoded.id, updates);
 
-        // Reiniciar serviço para aplicar mudanças
         await crossMarketService.restart();
 
         sendJson(response, 200, { strategy });
@@ -157,54 +139,50 @@ async function updateStrategy({ request, response, params }) {
     }
 }
 
-async function deleteStrategy({ response, params }) {
+async function deleteStrategy({ request, response, params }) {
+    const decoded = verifyToken(request, response);
+    if (!decoded) return;
     try {
         const { id } = params;
-        const strategy = await deleteCrossMarketStrategy(id);
-
+        const strategy = await deleteCrossMarketStrategy(id, decoded.id);
         if (!strategy) {
             sendJson(response, 404, { error: 'Estratégia não encontrada' });
             return;
         }
-
-        // Reiniciar serviço para remover estratégia
         await crossMarketService.restart();
-
         sendJson(response, 200, { message: 'Estratégia removida com sucesso' });
     } catch (error) {
         sendJson(response, 400, { error: error.message });
     }
 }
 
-async function toggleStrategy({ response, params }) {
+async function toggleStrategy({ request, response, params }) {
+    const decoded = verifyToken(request, response);
+    if (!decoded) return;
     try {
         const { id } = params;
-        const strategy = await toggleCrossMarketStrategy(id);
-
+        const strategy = await toggleCrossMarketStrategy(id, decoded.id);
         if (!strategy) {
             sendJson(response, 404, { error: 'Estratégia não encontrada' });
             return;
         }
-
-        // Reiniciar serviço para aplicar mudança de status
         await crossMarketService.restart();
-
         sendJson(response, 200, { strategy });
     } catch (error) {
         sendJson(response, 400, { error: error.message });
     }
 }
 
-async function executeScanHandler({ response, params }) {
+async function executeScanHandler({ request, response, params }) {
+    const decoded = verifyToken(request, response);
+    if (!decoded) return;
     try {
         const { id } = params;
-        const strategy = await getCrossMarketStrategyById(id);
-
+        const strategy = await getCrossMarketStrategyById(id, decoded.id);
         if (!strategy) {
             sendJson(response, 404, { error: 'Estratégia não encontrada' });
             return;
         }
-
         const result = await crossMarketService.executeScan(strategy);
         sendJson(response, 200, { scan: result });
     } catch (error) {
@@ -382,17 +360,17 @@ async function getBalances({ response, params }) {
     }
 }
 
-async function executeAllStrategies({ response }) {
+async function executeAllStrategies({ request, response }) {
+    const decoded = verifyToken(request, response);
+    if (!decoded) return;
     try {
-        const strategies = await getAllCrossMarketStrategies();
+        const strategies = await getAllCrossMarketStrategies(decoded.id);
         const activeStrategies = (strategies || []).filter((s) => s.active);
         const results = [];
-
         for (const strategy of activeStrategies) {
             const result = await crossMarketService.executeScan(strategy);
             results.push(result);
         }
-
         sendJson(response, 200, {
             message: `Execução concluída em ${results.length} estratégia(s).`,
             results
@@ -402,16 +380,16 @@ async function executeAllStrategies({ response }) {
     }
 }
 
-async function executeStrategyById({ response, params }) {
+async function executeStrategyById({ request, response, params }) {
+    const decoded = verifyToken(request, response);
+    if (!decoded) return;
     try {
         const { id } = params;
-        const strategy = await getCrossMarketStrategyById(id);
-
+        const strategy = await getCrossMarketStrategyById(id, decoded.id);
         if (!strategy) {
             sendJson(response, 404, { error: 'Estratégia não encontrada' });
             return;
         }
-
         const result = await crossMarketService.executeScan(strategy);
         sendJson(response, 200, { scan: result });
     } catch (error) {
@@ -419,24 +397,21 @@ async function executeStrategyById({ response, params }) {
     }
 }
 
-async function startAutoExecution({ response, params }) {
+async function startAutoExecution({ request, response, params }) {
+    const decoded = verifyToken(request, response);
+    if (!decoded) return;
     try {
         const { id } = params;
-        const strategy = await getCrossMarketStrategyById(id);
-
+        const strategy = await getCrossMarketStrategyById(id, decoded.id);
         if (!strategy) {
             sendJson(response, 404, { error: 'Estratégia não encontrada' });
             return;
         }
-
-        // Inicia escuta contínua usando o mesmo mecanismo de scan
         if (!crossMarketService.startStrategyScan) {
             sendJson(response, 500, { error: 'Serviço não suporta escuta contínua' });
             return;
         }
-
         crossMarketService.startStrategyScan(strategy);
-
         sendJson(response, 200, {
             message: `Escuta contínua ativada para estratégia ${strategy.name}. Intervalo: ${strategy.scanIntervalMs || 5000}ms`
         });
@@ -445,23 +420,21 @@ async function startAutoExecution({ response, params }) {
     }
 }
 
-async function stopAutoExecution({ response, params }) {
+async function stopAutoExecution({ request, response, params }) {
+    const decoded = verifyToken(request, response);
+    if (!decoded) return;
     try {
         const { id } = params;
-        const strategy = await getCrossMarketStrategyById(id);
-
+        const strategy = await getCrossMarketStrategyById(id, decoded.id);
         if (!strategy) {
             sendJson(response, 404, { error: 'Estratégia não encontrada' });
             return;
         }
-
         if (!crossMarketService.stopStrategyScan) {
             sendJson(response, 500, { error: 'Serviço não suporta parada de escuta' });
             return;
         }
-
         crossMarketService.stopStrategyScan(id);
-
         sendJson(response, 200, {
             message: `Escuta contínua interrompida para estratégia ${strategy.name}`
         });

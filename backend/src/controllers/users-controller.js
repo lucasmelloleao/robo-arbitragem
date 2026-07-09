@@ -7,12 +7,16 @@ const {
     deleteUser
 } = require('../database');
 const { readJsonBody, sendJson } = require('../http-utils');
+const { verifyToken } = require('../middleware/auth-middleware');
 
-async function listUsers({ response }) {
+async function listUsers({ request, response }) {
+    const decoded = verifyToken(request, response);
+    if (!decoded) return;
     const users = await getAllUsers();
     sendJson(response, 200, { users });
 }
 
+// Criação de usuário é pública (cadastro/registro)
 async function createUserHandler({ request, response }) {
     try {
         const userData = await readJsonBody(request);
@@ -44,12 +48,13 @@ async function createUserHandler({ request, response }) {
             sendJson(response, 409, { error: 'Username ou email já existe' });
             return;
         }
-
         sendJson(response, 400, { error: error.message });
     }
 }
 
 async function updateUserHandler({ request, response, params }) {
+    const decoded = verifyToken(request, response);
+    if (!decoded) return;
     try {
         const updates = await readJsonBody(request);
         const user = await updateUserStopTrader(params.username, updates.stopTrader);
@@ -67,6 +72,8 @@ async function updateUserHandler({ request, response, params }) {
 }
 
 async function deleteUserHandler({ request, response, params }) {
+    const decoded = verifyToken(request, response);
+    if (!decoded) return;
     try {
         const user = await deleteUser(params.username);
 

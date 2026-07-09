@@ -9,10 +9,13 @@ const {
 } = require('../database');
 const Exchange = require('../models/Exchange');
 const { getExchangeCredentialConfig, SUPPORTED_EXCHANGES } = require('../exchange-credentials');
+const { verifyToken } = require('../middleware/auth-middleware');
 
-async function listExchanges({ response }) {
+async function listExchanges({ request, response }) {
+    const decoded = verifyToken(request, response);
+    if (!decoded) return;
     try {
-        const exchanges = await getAllExchanges();
+        const exchanges = await getAllExchanges(decoded.id);
         sendJson(response, 200, { exchanges });
     } catch (error) {
         sendJson(response, 500, { error: error.message });
@@ -20,15 +23,14 @@ async function listExchanges({ response }) {
 }
 
 async function createExchangeHandler({ request, response }) {
+    const decoded = verifyToken(request, response);
+    if (!decoded) return;
     try {
         const body = await readJsonBody(request);
-
         const { name, acronym, apiKey, secretKey, password, active, notes, assetsMode, arbitrageConfig, marketMakingConfig } = body;
 
         if (!name || !acronym) {
-            sendJson(response, 400, { 
-                error: 'Campos obrigatórios: name, acronym' 
-            });
+            sendJson(response, 400, { error: 'Campos obrigatórios: name, acronym' });
             return;
         }
 
@@ -39,9 +41,9 @@ async function createExchangeHandler({ request, response }) {
             return;
         }
 
-        const existingExchange = await Exchange.findOne({ acronym });
+        const existingExchange = await Exchange.findOne({ userId: decoded.id, acronym: acronym.toUpperCase() });
         if (existingExchange) {
-            sendJson(response, 409, { error: 'Sigla da corretora já existe' });
+            sendJson(response, 409, { error: 'Você já possui uma corretora com esta sigla.' });
             return;
         }
 
@@ -63,8 +65,7 @@ async function createExchangeHandler({ request, response }) {
             exchangeData.marketMakingConfig = marketMakingConfig;
         }
 
-        const exchange = await createExchange(exchangeData);
-
+        const exchange = await createExchange(decoded.id, exchangeData);
         sendJson(response, 201, { exchange });
     } catch (error) {
         sendJson(response, 400, { error: error.message });
@@ -72,11 +73,13 @@ async function createExchangeHandler({ request, response }) {
 }
 
 async function updateExchangeHandler({ request, response, params, context }) {
+    const decoded = verifyToken(request, response);
+    if (!decoded) return;
     try {
         const { id } = params;
         const body = await readJsonBody(request);
 
-        const currentExchange = await Exchange.findById(id).lean();
+        const currentExchange = await Exchange.findOne({ _id: id, userId: decoded.id }).lean();
         if (!currentExchange) {
             sendJson(response, 404, { error: 'Corretora não encontrada' });
             return;
@@ -87,46 +90,35 @@ async function updateExchangeHandler({ request, response, params, context }) {
         if (typeof body.name === 'string' && body.name.trim()) {
             updates.name = body.name.trim();
         }
-
         if (typeof body.acronym === 'string' && body.acronym.trim()) {
             updates.acronym = body.acronym.trim().toUpperCase();
         }
-
         if (typeof body.apiKey === 'string' && body.apiKey.trim()) {
             updates.apiKey = body.apiKey.trim();
         }
-
         if (typeof body.secretKey === 'string' && body.secretKey.trim()) {
             updates.secretKey = body.secretKey.trim();
         }
-
         if (typeof body.password === 'string' && body.password.trim()) {
             updates.password = body.password.trim();
         }
-
         if (typeof body.notes === 'string') {
             updates.notes = body.notes.trim();
         }
-
         if (typeof body.envInfo === 'string') {
             updates.envInfo = body.envInfo.trim();
         }
-
         if (typeof body.active === 'boolean') {
             updates.active = body.active;
         }
-
-        // assetsMode deve ser sempre processado (mesmo voltando para 'list')
         if (body.assetsMode === undefined || body.assetsMode === null || body.assetsMode === '') {
             updates.assetsMode = 'list';
         } else if (['list', 'all'].includes(String(body.assetsMode).toLowerCase())) {
             updates.assetsMode = String(body.assetsMode).toLowerCase();
         }
-
         if (body.arbitrageConfig && typeof body.arbitrageConfig === 'object') {
             updates.arbitrageConfig = body.arbitrageConfig;
         }
-
         if (body.marketMakingConfig && typeof body.marketMakingConfig === 'object') {
             updates.marketMakingConfig = body.marketMakingConfig;
         }
@@ -137,13 +129,13 @@ async function updateExchangeHandler({ request, response, params, context }) {
         }
 
         if (updates.acronym) {
-            const existingExchange = await Exchange.findOne({
+            const conflicting = await Exchange.findOne({
+                userId: decoded.id,
                 acronym: updates.acronym,
                 _id: { $ne: id }
             }).lean();
-
-            if (existingExchange) {
-                sendJson(response, 409, { error: 'Sigla da corretora já existe' });
+            if (conflicting) {
+                sendJson(response, 409, { error: 'Você já possui uma corretora com esta sigla.' });
                 return;
             }
         }
@@ -157,8 +149,7 @@ async function updateExchangeHandler({ request, response, params, context }) {
             }
         }
 
-        const exchange = await updateExchange(id, updates);
-
+        const exchange = await updateExchange(id, decoded.id, updates);
         sendJson(response, 200, { exchange });
     } catch (error) {
         sendJson(response, 500, { error: error.message });
@@ -166,9 +157,11 @@ async function updateExchangeHandler({ request, response, params, context }) {
 }
 
 async function deleteExchangeHandler({ request, response, params, context }) {
+    const decoded = verifyToken(request, response);
+    if (!decoded) return;
     try {
         const { id } = params;
-        const exchange = await deleteExchange(id);
+        const exchange = await deleteExchange(id, decoded.id);
 
         if (!exchange) {
             sendJson(response, 404, { error: 'Corretora não encontrada' });
@@ -191,9 +184,11 @@ async function deleteExchangeHandler({ request, response, params, context }) {
 }
 
 async function toggleExchangeHandler({ request, response, params, context }) {
+    const decoded = verifyToken(request, response);
+    if (!decoded) return;
     try {
         const { id } = params;
-        const exchange = await toggleExchangeStatus(id);
+        const exchange = await toggleExchangeStatus(id, decoded.id);
 
         if (!exchange) {
             sendJson(response, 404, { error: 'Corretora não encontrada' });
@@ -216,10 +211,12 @@ async function toggleExchangeHandler({ request, response, params, context }) {
 }
 
 async function getExchangeById({ request, response, params }) {
+    const decoded = verifyToken(request, response);
+    if (!decoded) return;
     try {
         const { id } = params;
-        const exchanges = await getAllExchanges();
-        const found = exchanges.find((exchange) => exchange._id === id);
+        const exchanges = await getAllExchanges(decoded.id);
+        const found = exchanges.find((exchange) => String(exchange._id) === id);
 
         if (!found) {
             sendJson(response, 404, { error: 'Corretora não encontrada' });
@@ -232,9 +229,11 @@ async function getExchangeById({ request, response, params }) {
     }
 }
 
-async function getExchangeStatusesHandler({ response }) {
+async function getExchangeStatusesHandler({ request, response }) {
+    const decoded = verifyToken(request, response);
+    if (!decoded) return;
     try {
-        const statuses = await getActiveExchangeStatuses();
+        const statuses = await getActiveExchangeStatuses(decoded.id);
         sendJson(response, 200, { statuses });
     } catch (error) {
         sendJson(response, 500, { error: error.message });

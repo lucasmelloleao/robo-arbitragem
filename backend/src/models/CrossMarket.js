@@ -1,6 +1,12 @@
 const mongoose = require('mongoose');
 
 const crossMarketSchema = new mongoose.Schema({
+    userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: [true, 'Usuário é obrigatório'],
+        index: true
+    },
     name: {
         type: String,
         required: [true, 'Nome da estratégia é obrigatório'],
@@ -74,9 +80,9 @@ const crossMarketSchema = new mongoose.Schema({
     }
 });
 
-// Índice composto para evitar duplicatas da mesma dupla de corretoras+moedas
+// Índice composto por usuário: evita duplicata da mesma dupla de corretoras+moedas para o mesmo usuário
 crossMarketSchema.index(
-    { exchange1: 1, exchange2: 1, asset1: 1, asset2: 1 },
+    { userId: 1, exchange1: 1, exchange2: 1, asset1: 1, asset2: 1 },
     { unique: true }
 );
 
