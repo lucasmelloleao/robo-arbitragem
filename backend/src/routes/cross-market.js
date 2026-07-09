@@ -210,10 +210,12 @@ async function getLogs({ response, query }) {
     }
 }
 
-async function getBalances({ response, params }) {
+async function getBalances({ request, response, params }) {
+    const decoded = verifyToken(request, response);
+    if (!decoded) return;
     try {
         const { exchangeId } = params;
-        const strategies = await getAllCrossMarketStrategies();
+        const strategies = await getAllCrossMarketStrategies(decoded.id);
         const activeStrategies = (strategies || []).filter((s) => s.active);
         
         // Buscar saldos de todas as exchanges usadas nas estratégias
@@ -283,39 +285,80 @@ async function getBalances({ response, params }) {
                         }
                         balanceData = await authenticatedInstance.fetchBalance();
                         
-                        // Buscar tickers com instância autenticada
+                        // Obter preços usando a instância autenticada para as moedas que têm saldo
                         try {
-                            let markets = authenticatedInstance.markets || {};
-                            if (Object.keys(markets).length === 0 && typeof authenticatedInstance.loadMarkets === 'function') {
-                                try {
-                                    markets = await authenticatedInstance.loadMarkets();
-                                } catch (marketsError) {
-                                    console.warn(`[balances] Falha ao carregar mercados para ${exchangeAcronym}:`, marketsError.message);
+                            const activeCoins = Object.keys(balanceData.free || {}).filter((coin) => {
+                                const total = (balanceData.free[coin] || 0) + (balanceData.used[coin] || 0);
+                                return total > 0.000001 && coin !== 'USDT';
+                            });
+
+                            if (activeCoins.length > 0) {
+                                // Tentar carregar os mercados primeiro se necessário
+                                if (Object.keys(authenticatedInstance.markets || {}).length === 0) {
+                                    await authenticatedInstance.loadMarkets().catch(() => {});
                                 }
-                            }
-                            
-                            const usdtPairs = Object.entries(markets)
-                                .filter(([symbol]) => symbol.includes('/USDT'))
-                                .slice(0, 50);
-                            
-                            if (usdtPairs.length > 0) {
-                                const tickerPromises = usdtPairs.map(([symbol]) => 
-                                    authenticatedInstance.fetchTicker(symbol).catch(() => null)
-                                );
-                                const tickerResults = await Promise.all(tickerPromises);
-                                
-                                tickerResults.forEach((ticker, index) => {
-                                    if (ticker) {
-                                        const [base] = usdtPairs[index][0].split('/');
-                                        tickers[base] = ticker.last || ticker.close;
+
+                                // Busca preços em paralelo apenas das moedas com saldo
+                                const tickerPromises = activeCoins.map(async (coin) => {
+                                    const symbol = `${coin}/USDT`;
+                                    // Verifica se o mercado existe antes de buscar
+                                    if (authenticatedInstance.markets && authenticatedInstance.markets[symbol]) {
+                                        try {
+                                            const tick = await authenticatedInstance.fetchTicker(symbol);
+                                            return { coin, price: tick.last || tick.close };
+                                        } catch (e) {
+                                            return null;
+                                        }
                                     }
+                                    return null;
+                                });
+
+                                const results = await Promise.all(tickerPromises);
+                                results.forEach((r) => {
+                                    if (r) tickers[r.coin] = r.price;
                                 });
                             }
                         } catch (tickerError) {
-                            console.warn(`[balances] Não foi possível obter tickers para ${exchangeAcronym}:`, tickerError.message);
+                            console.warn(`[balances] Erro ao obter tickers para ${exchangeAcronym}:`, tickerError.message);
                         }
                     } else {
                         throw publicError;
+                    }
+                }
+
+                // Se passou na API pública sem erro, buscar preços das moedas com saldo
+                if (Object.keys(tickers).length === 0 && balanceData) {
+                    try {
+                        const activeCoins = Object.keys(balanceData.free || {}).filter((coin) => {
+                            const total = (balanceData.free[coin] || 0) + (balanceData.used[coin] || 0);
+                            return total > 0.000001 && coin !== 'USDT';
+                        });
+
+                        if (activeCoins.length > 0) {
+                            if (Object.keys(exchangeInstance.markets || {}).length === 0) {
+                                await exchangeInstance.loadMarkets().catch(() => {});
+                            }
+
+                            const tickerPromises = activeCoins.map(async (coin) => {
+                                const symbol = `${coin}/USDT`;
+                                if (exchangeInstance.markets && exchangeInstance.markets[symbol]) {
+                                    try {
+                                        const tick = await exchangeInstance.fetchTicker(symbol);
+                                        return { coin, price: tick.last || tick.close };
+                                    } catch (e) {
+                                        return null;
+                                    }
+                                }
+                                return null;
+                            });
+
+                            const results = await Promise.all(tickerPromises);
+                            results.forEach((r) => {
+                                if (r) tickers[r.coin] = r.price;
+                            });
+                        }
+                    } catch (publicTickerErr) {
+                        console.warn(`[balances] Erro ao obter tickers publicos para ${exchangeAcronym}:`, publicTickerErr.message);
                     }
                 }
                 

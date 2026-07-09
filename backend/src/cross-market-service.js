@@ -198,8 +198,17 @@ async function executeCrossMarketTrade(strategy, buyExchange, sellExchange, buyP
 
         // Calcula a quantidade da moeda base (ex: HYPE) e formata com a precisão de cada exchange
         const rawBaseAmount = quoteAmount / buyPrice;
-        const buyAmountFormatted = buyInstance.amountToPrecision(symbol, rawBaseAmount);
-        const sellAmountFormatted = sellInstance.amountToPrecision(symbol, rawBaseAmount);
+        let buyAmountFormatted = buyInstance.amountToPrecision(symbol, rawBaseAmount);
+        let sellAmountFormatted = sellInstance.amountToPrecision(symbol, rawBaseAmount);
+
+        // FALLBACK: Se o arredondamento zerou a quantidade mas o valor bruto original era maior que zero,
+        // força o uso de uma precisão manual (ex: 4 casas decimais) para evitar ordem zerada.
+        if (parseFloat(buyAmountFormatted) === 0 && rawBaseAmount > 0) {
+            buyAmountFormatted = rawBaseAmount.toFixed(4);
+        }
+        if (parseFloat(sellAmountFormatted) === 0 && rawBaseAmount > 0) {
+            sellAmountFormatted = rawBaseAmount.toFixed(4);
+        }
 
         log('info', 'Iniciando execucao de trade LIVE', {
             strategy: strategy.name,
@@ -210,6 +219,28 @@ async function executeCrossMarketTrade(strategy, buyExchange, sellExchange, buyP
             buyAt: buyExchange,
             sellAt: sellExchange
         }, strategy._id);
+
+        const buyAmountNum = parseFloat(buyAmountFormatted);
+        const sellAmountNum = parseFloat(sellAmountFormatted);
+
+        if (isNaN(buyAmountNum) || buyAmountNum <= 0 || isNaN(sellAmountNum) || sellAmountNum <= 0) {
+            throw new Error(`Quantidade invalida apos formatar precisao: compra=${buyAmountFormatted}, venda=${sellAmountFormatted}. Aumente o valor de operacao da estrategia.`);
+        }
+
+        // Tentar obter limites mínimos dos mercados do CCXT se definidos
+        const buyMarket = buyInstance.market(symbol);
+        const sellMarket = sellInstance.market(symbol);
+
+        if (buyMarket && buyMarket.limits && buyMarket.limits.amount && buyMarket.limits.amount.min) {
+            if (buyAmountNum < buyMarket.limits.amount.min) {
+                throw new Error(`Quantidade de compra ${buyAmountNum} abaixo do minimo permitido pela exchange ${buyExchange} (${buyMarket.limits.amount.min} ${strategy.asset2})`);
+            }
+        }
+        if (sellMarket && sellMarket.limits && sellMarket.limits.amount && sellMarket.limits.amount.min) {
+            if (sellAmountNum < sellMarket.limits.amount.min) {
+                throw new Error(`Quantidade de venda ${sellAmountNum} abaixo do minimo permitido pela exchange ${sellExchange} (${sellMarket.limits.amount.min} ${strategy.asset2})`);
+            }
+        }
 
         // 2. Validar saldos
         const buyBalance = await buyInstance.fetchBalance();
@@ -241,9 +272,13 @@ async function executeCrossMarketTrade(strategy, buyExchange, sellExchange, buyP
                 sellAmount: sellAmountFormatted
             }, strategy._id);
             [buyOrder, sellOrder] = await Promise.all([
-                buyInstance.createMarketBuyOrder(symbol, parseFloat(buyAmountFormatted)),
+                buyInstance.createMarketBuyOrder(symbol, parseFloat(buyAmountFormatted), buyPrice),
                 sellInstance.createMarketSellOrder(symbol, parseFloat(sellAmountFormatted))
             ]);
+
+
+
+
             log('info', 'Ordem de COMPRA executada', { exchange: buyExchange, orderId: buyOrder.id }, strategy._id);
             log('info', 'Ordem de VENDA executada', { exchange: sellExchange, orderId: sellOrder.id }, strategy._id);
         } catch (error) {
