@@ -7,39 +7,7 @@
     <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-    <div class="app-layout">
-        <aside class="sidebar">
-            <div class="sidebar-logo">
-                <span>◆</span> Arb<span>Trade</span>
-            </div>
-            <nav>
-                <a href="/cross-market.html" class="nav-item" data-section="cross-market">
-                    <span class="nav-icon">🔄</span>
-                    <span>Cross-Market</span>
-                </a>
-                <div class="nav-section">
-                    <div class="nav-section-title">Execução</div>
-                    <a href="/cross-market-execution.html" class="nav-item active" data-section="cross-market-execution">
-                        <span class="nav-icon">▶️</span>
-                        <span>Execução</span>
-                    </a>
-                </div>
-                <div class="nav-section">
-                    <div class="nav-section-title">Cadastro</div>
-                    <a href="/users.html" class="nav-item" target="_self">
-                        <span class="nav-icon">👤</span>
-                        <span>Usuários</span>
-                    </a>
-                    <a href="/exchanges.html" class="nav-item" target="_self">
-                        <span class="nav-icon">🏢</span>
-                        <span>Exchanges</span>
-                    </a>
-                </div>
-            </nav>
-        </aside>
-
-        <div class="main-content">
-            <main class="shell">
+    <main class="shell">
                 <section class="hero">
                     <div class="hero-top">
                         <div>
@@ -73,8 +41,6 @@
                     <section class="exchange-grid" id="cm-exec-grid"></section>
                 </section>
             </main>
-        </div>
-    </div>
 
     <script src="/js/config.js"></script>
     <script type="module" src="/app.js"></script>
@@ -85,7 +51,8 @@
             formatDateTime,
             formatNumber,
             getExchangeTitle,
-            getVisibleExchanges
+            getVisibleExchanges,
+            fetchJson
         } from './js/shared.js';
 
         const execGrid = document.getElementById('cm-exec-grid');
@@ -98,15 +65,15 @@
 
         const executionViews = new Map();
         const activeSubscriptions = new Set();
+        let strategies = [];
 
         function getSubscribedCount() {
-            return getVisibleExchanges().filter((exchangeId) => activeSubscriptions.has(exchangeId)).length;
+            return strategies.filter((s) => activeSubscriptions.has(s._id)).length;
         }
 
         function updateListenAllButton() {
-            const visibleExchanges = getVisibleExchanges();
             const subscribedCount = getSubscribedCount();
-            const allSubscribed = visibleExchanges.length > 0 && subscribedCount === visibleExchanges.length;
+            const allSubscribed = strategies.length > 0 && subscribedCount === strategies.length;
 
             listenAllButton.textContent = allSubscribed ? 'Parar escuta de todas' : 'Escutar todas';
             listenAllButton.className = allSubscribed ? 'primary' : 'secondary';
@@ -125,17 +92,19 @@
             }
         }
 
-        function createExecutionPanelMarkup(exchangeId) {
+        function createExecutionPanelMarkup(strategy) {
             return `
-                <article class="exchange-panel" data-exchange="${exchangeId}">
+                <article class="exchange-panel" data-strategy-id="${strategy._id}">
                     <div class="exchange-panel-top">
                         <div>
-                            <p class="route">${getExchangeTitle(exchangeId)}</p>
-                            <div class="exchange-feedback mono" data-role="exec-feedback">Aguardando execução...</div>
+                            <p class="route">${escapeHtml(strategy.name)}</p>
+                            <span style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-top: 4px;">
+                                ${escapeHtml(strategy.exchange1)} ➔ ${escapeHtml(strategy.exchange2)} (${escapeHtml(strategy.asset1)}/${escapeHtml(strategy.asset2)})
+                            </span>
+                            <div class="exchange-feedback mono" data-role="exec-feedback" style="margin-top: 8px;">Aguardando execução...</div>
                         </div>
                         <div class="actions actions-compact">
-                            <button class="primary" data-role="exec-run">Executar Agora</button>
-                            <button class="secondary" data-role="exec-listen">Escutar</button>
+                            <button class="secondary" data-role="exec-toggle">Executar</button>
                             <button class="secondary" data-role="exec-refresh">Atualizar</button>
                         </div>
                     </div>
@@ -161,53 +130,56 @@
                     </section>
                     <div class="grid exchange-panel-grid">
                         <div class="stack">
-                            <section class="panel exchange-section">
-                                <h2>Execuções Recentes</h2>
-                                <div class="cards" data-role="exec-history"></div>
-                            </section>
+                            <details class="panel exchange-section accordion-item section-accordion">
+                                <summary class="accordion-summary section-accordion-summary">
+                                    <span>
+                                        <span class="accordion-title">Execuções Recentes</span>
+                                        <span class="accordion-subtitle">Operações de arbitragem executadas recentemente.</span>
+                                    </span>
+                                </summary>
+                                <div class="accordion-body">
+                                    <div class="cards" data-role="exec-history"></div>
+                                </div>
+                            </details>
                         </div>
                         <div class="stack">
-                            <section class="panel exchange-section">
-                                <h2>Logs</h2>
-                                <div class="cards" data-role="logs"></div>
-                            </section>
+                            <details class="panel exchange-section accordion-item section-accordion">
+                                <summary class="accordion-summary section-accordion-summary">
+                                    <span>
+                                        <span class="accordion-title">Logs</span>
+                                        <span class="accordion-subtitle">Registros detalhados de rastreamento e varreduras.</span>
+                                    </span>
+                                </summary>
+                                <div class="accordion-body">
+                                    <div class="cards" data-role="logs"></div>
+                                </div>
+                            </details>
                         </div>
                     </div>
                 </article>
             `;
         }
 
-        async function backendRequest(action, exchangeId) {
-            try {
-                let url;
-                switch (action) {
-                    case 'cross-market-status':
-                        url = buildApiUrl(`cross-market/status`);
-                        break;
-                    case 'cross-market-execute':
-                        url = buildApiUrl(`cross-market/${exchangeId}/execute`);
-                        break;
-                    case 'cross-market-subscribe':
-                        url = buildApiUrl(`cross-market/${exchangeId}/subscribe`);
-                        break;
-                    case 'cross-market-unsubscribe':
-                        url = buildApiUrl(`cross-market/${exchangeId}/unsubscribe`);
-                        break;
-                    default:
-                        throw new Error(`Ação não suportada: ${action}`);
-                }
-
-                const response = await fetch(url, { method: 'GET' });
-                const data = await response.json();
-
-                if (!response.ok) {
-                    throw new Error(data.error || 'Falha na requisição.');
-                }
-
-                return data;
-            } catch (error) {
-                throw error;
+        async function backendRequest(action, strategyId) {
+            let url;
+            switch (action) {
+                case 'cross-market-status':
+                    url = buildApiUrl(`cross-market/status`);
+                    break;
+                case 'cross-market-execute':
+                    url = buildApiUrl(`cross-market/${strategyId}/execute`);
+                    break;
+                case 'cross-market-subscribe':
+                    url = buildApiUrl(`cross-market/${strategyId}/subscribe`);
+                    break;
+                case 'cross-market-unsubscribe':
+                    url = buildApiUrl(`cross-market/${strategyId}/unsubscribe`);
+                    break;
+                default:
+                    throw new Error(`Ação não suportada: ${action}`);
             }
+
+            return await fetchJson(url, { method: 'GET' });
         }
 
         function renderMetrics(view, data) {
@@ -259,8 +231,8 @@
             `).join('');
         }
 
-        async function loadExecution(exchangeId) {
-            const view = executionViews.get(exchangeId);
+        async function loadExecution(strategyId) {
+            const view = executionViews.get(strategyId);
             if (!view) return;
 
             view.refreshButton.disabled = true;
@@ -268,19 +240,34 @@
 
             try {
                 // Carregar status do cross-market
-                const statusData = await backendRequest('cross-market-status', exchangeId);
+                const statusResponse = await backendRequest('cross-market-status', strategyId);
+                const statusData = statusResponse.status || statusResponse;
                 
-                // Buscar logs de todas as estratégias (sem filtro específico)
-                const logsData = await fetch(buildApiUrl(`cross-market/logs?limit=50`))
-                    .then(r => r.json())
+                // Buscar logs filtrados por strategyId
+                const logsData = await fetchJson(buildApiUrl(`cross-market/logs?limit=50&strategyId=${strategyId}`))
                     .catch(() => ({ logs: [] }));
 
+                const strategyStatus = (statusData.strategies || []).find(s => String(s.id) === String(strategyId));
+                const isRunning = strategyStatus ? strategyStatus.isRunning : false;
+
                 view.lastUpdate.textContent = formatDateTime(new Date().toISOString());
-                view.statusText.textContent = statusData.activeStrategies > 0 ? 'Ativo' : 'Inativo';
+                view.statusText.textContent = isRunning ? 'Ativo' : 'Inativo';
                 view.opportunitiesCount.textContent = statusData.opportunities || 0;
                 renderMetrics(view, statusData);
-                renderExecutionHistory(view, statusData.recentExecutions || []);
+                renderExecutionHistory(view, (statusData.recentExecutions || []).filter(item => item.strategyId === strategyId || item.strategyName === view.strategyName));
                 renderLogs(view, logsData.logs || []);
+                
+                if (isRunning) {
+                    activeSubscriptions.add(strategyId);
+                    view.toggleButton.textContent = 'Parar Execução';
+                    view.toggleButton.className = 'primary';
+                } else {
+                    activeSubscriptions.delete(strategyId);
+                    view.toggleButton.textContent = 'Executar';
+                    view.toggleButton.className = 'secondary';
+                }
+                updateStatusLabel();
+                updateListenAllButton();
                 view.feedback.textContent = 'Painel atualizado.';
             } catch (error) {
                 view.feedback.textContent = error.message;
@@ -289,18 +276,18 @@
             }
         }
 
-        async function executeCrossMarket(exchangeId, strategyId) {
-            const view = executionViews.get(exchangeId);
+        async function executeCrossMarket(strategyId) {
+            const view = executionViews.get(strategyId);
             if (!view) return;
 
             view.runButton.disabled = true;
             view.feedback.textContent = 'Executando...';
 
             try {
-                const result = await backendRequest('cross-market-execute', exchangeId);
+                const result = await backendRequest('cross-market-execute', strategyId);
                 view.feedback.textContent = result.message || 'Execução concluída.';
                 view.lastUpdate.textContent = formatDateTime(new Date().toISOString());
-                await loadExecution(exchangeId, strategyId);
+                await loadExecution(strategyId);
             } catch (error) {
                 view.feedback.textContent = error.message;
             } finally {
@@ -308,52 +295,52 @@
             }
         }
 
-        async function toggleSubscription(exchangeId) {
-            const view = executionViews.get(exchangeId);
+        async function toggleSubscription(strategyId) {
+            const view = executionViews.get(strategyId);
             if (!view) return;
 
-            view.listenButton.disabled = true;
+            view.toggleButton.disabled = true;
 
             try {
-                if (activeSubscriptions.has(exchangeId)) {
-                    await backendRequest('cross-market-unsubscribe', exchangeId);
-                    activeSubscriptions.delete(exchangeId);
-                    view.feedback.textContent = 'Escuta interrompida.';
-                    view.listenButton.textContent = 'Escutar';
-                    view.listenButton.className = 'secondary';
+                if (activeSubscriptions.has(strategyId)) {
+                    await backendRequest('cross-market-unsubscribe', strategyId);
+                    activeSubscriptions.delete(strategyId);
+                    view.feedback.textContent = 'Execução interrompida.';
+                    view.toggleButton.textContent = 'Executar';
+                    view.toggleButton.className = 'secondary';
                 } else {
-                    const result = await backendRequest('cross-market-subscribe', exchangeId);
-                    activeSubscriptions.add(exchangeId);
-                    view.feedback.textContent = `Escuta ativada. Intervalo: ${result.intervalMs / 1000}s`;
-                    view.listenButton.textContent = 'Parar escuta';
-                    view.listenButton.className = 'primary';
+                    const result = await backendRequest('cross-market-subscribe', strategyId);
+                    activeSubscriptions.add(strategyId);
+                    view.feedback.textContent = result.message || 'Execução ativada.';
+                    view.toggleButton.textContent = 'Parar Execução';
+                    view.toggleButton.className = 'primary';
                 }
                 updateStatusLabel();
                 updateListenAllButton();
             } catch (error) {
                 view.feedback.textContent = error.message;
             } finally {
-                view.listenButton.disabled = false;
+                view.toggleButton.disabled = false;
             }
         }
 
         async function toggleListenAll() {
-            const visibleExchanges = getVisibleExchanges();
-            const allSubscribed = visibleExchanges.length > 0 && visibleExchanges.every((id) => activeSubscriptions.has(id));
+            if (strategies.length === 0) return;
+            const allSubscribed = strategies.every((s) => activeSubscriptions.has(s._id));
 
             listenAllButton.disabled = true;
             listenAllButton.textContent = allSubscribed ? 'Parando...' : 'Ativando...';
 
             try {
                 if (allSubscribed) {
-                    await Promise.all(visibleExchanges.map((id) => backendRequest('cross-market-unsubscribe', id)));
-                    visibleExchanges.forEach((id) => activeSubscriptions.delete(id));
+                    await Promise.all(strategies.map((s) => backendRequest('cross-market-unsubscribe', s._id)));
+                    strategies.forEach((s) => activeSubscriptions.delete(s._id));
                     execFeedback.textContent = 'Escuta interrompida em todas.';
                 } else {
-                    const targets = visibleExchanges.filter((id) => !activeSubscriptions.has(id));
-                    await Promise.all(targets.map((id) => backendRequest('cross-market-subscribe', id)));
-                    targets.forEach((id) => activeSubscriptions.add(id));
-                    execFeedback.textContent = 'Escuta ativada em todas as exchanges visíveis.';
+                    const targets = strategies.filter((s) => !activeSubscriptions.has(s._id));
+                    await Promise.all(targets.map((s) => backendRequest('cross-market-subscribe', s._id)));
+                    targets.forEach((s) => activeSubscriptions.add(s._id));
+                    execFeedback.textContent = 'Escuta ativada em todas as estratégias.';
                 }
                 updateStatusLabel();
                 updateListenAllButton();
@@ -365,12 +352,12 @@
         }
 
         async function runAllExecutions() {
+            if (strategies.length === 0) return;
             runAllButton.disabled = true;
             execFeedback.textContent = 'Executando todas...';
 
             try {
-                const visibleExchanges = getVisibleExchanges();
-                await Promise.allSettled(visibleExchanges.map((id) => executeCrossMarket(id)));
+                await Promise.allSettled(strategies.map((s) => executeCrossMarket(s._id)));
                 execFeedback.textContent = 'Execução concluída.';
             } catch (error) {
                 execFeedback.textContent = error.message;
@@ -380,11 +367,12 @@
         }
 
         async function refreshAll() {
+            if (strategies.length === 0) return;
             refreshButton.disabled = true;
             execFeedback.textContent = 'Atualizando...';
 
             try {
-                await Promise.all(getVisibleExchanges().map((id) => loadExecution(id)));
+                await Promise.all(strategies.map((s) => loadExecution(s._id)));
                 execFeedback.textContent = 'Painéis atualizados.';
             } catch (error) {
                 execFeedback.textContent = error.message;
@@ -393,36 +381,53 @@
             }
         }
 
-        function initializeExecutionPanels() {
-            const visibleExchanges = getVisibleExchanges();
-            execGrid.innerHTML = visibleExchanges.map(createExecutionPanelMarkup).join('');
+        async function initializeExecutionPanels() {
+            execFeedback.textContent = 'Carregando estratégias...';
+            try {
+                const response = await fetchJson(buildApiUrl('cross-market'));
+                strategies = response.strategies || [];
 
-            visibleExchanges.forEach((exchangeId) => {
-                const root = execGrid.querySelector(`[data-exchange="${exchangeId}"]`);
-                const view = {
-                    exchangeId,
-                    root,
-                    feedback: root.querySelector('[data-role="exec-feedback"]'),
-                    lastUpdate: root.querySelector('[data-role="last-update"]'),
-                    statusText: root.querySelector('[data-role="exec-status"]'),
-                    opportunitiesCount: root.querySelector('[data-role="opportunities-count"]'),
-                    metrics: root.querySelector('[data-role="metrics"]'),
-                    execHistory: root.querySelector('[data-role="exec-history"]'),
-                    logs: root.querySelector('[data-role="logs"]'),
-                    runButton: root.querySelector('[data-role="exec-run"]'),
-                    listenButton: root.querySelector('[data-role="exec-listen"]'),
-                    refreshButton: root.querySelector('[data-role="exec-refresh"]')
-                };
+                if (strategies.length === 0) {
+                    execGrid.innerHTML = '<div class="empty cm-full">Nenhuma estratégia cross-market em execução no momento. Ative uma na página "Configuração" para acompanhar.</div>';
+                    execFeedback.textContent = '';
+                    updateListenAllButton();
+                    updateStatusLabel();
+                    return;
+                }
 
-                view.runButton.addEventListener('click', () => executeCrossMarket(exchangeId));
-                view.refreshButton.addEventListener('click', () => loadExecution(exchangeId));
-                view.listenButton.addEventListener('click', () => toggleSubscription(exchangeId));
+                execGrid.innerHTML = strategies.map(createExecutionPanelMarkup).join('');
+                executionViews.clear();
 
-                executionViews.set(exchangeId, view);
-            });
+                strategies.forEach((strategy) => {
+                    const root = execGrid.querySelector(`[data-strategy-id="${strategy._id}"]`);
+                    const view = {
+                        strategyId: strategy._id,
+                        strategyName: strategy.name,
+                        root,
+                        feedback: root.querySelector('[data-role="exec-feedback"]'),
+                        lastUpdate: root.querySelector('[data-role="last-update"]'),
+                        statusText: root.querySelector('[data-role="exec-status"]'),
+                        opportunitiesCount: root.querySelector('[data-role="opportunities-count"]'),
+                        metrics: root.querySelector('[data-role="metrics"]'),
+                        execHistory: root.querySelector('[data-role="exec-history"]'),
+                        logs: root.querySelector('[data-role="logs"]'),
+                        toggleButton: root.querySelector('[data-role="exec-toggle"]'),
+                        refreshButton: root.querySelector('[data-role="exec-refresh"]')
+                    };
 
-            updateListenAllButton();
-            updateStatusLabel();
+                    view.toggleButton.addEventListener('click', () => toggleSubscription(strategy._id));
+                    view.refreshButton.addEventListener('click', () => loadExecution(strategy._id));
+
+                    executionViews.set(strategy._id, view);
+                });
+
+                updateListenAllButton();
+                updateStatusLabel();
+                execFeedback.textContent = '';
+            } catch (err) {
+                execGrid.innerHTML = `<div class="empty cm-full" style="color: var(--danger);">Falha ao carregar estratégias: ${err.message}</div>`;
+                execFeedback.textContent = '';
+            }
         }
 
         if (runAllButton) {
@@ -438,21 +443,20 @@
         }
 
         window.addEventListener('load-dashboard', () => {
-            if (executionViews.size === 0) {
-                initializeExecutionPanels();
-                Promise.all(getVisibleExchanges().map((id) => loadExecution(id))).catch(() => {});
-            }
+            initializeExecutionPanels().then(() => {
+                strategies.forEach((s) => loadExecution(s._id).catch(() => {}));
+            });
         });
 
         window.addEventListener('init-panels', () => {
-            if (executionViews.size === 0) {
-                initializeExecutionPanels();
-                Promise.all(getVisibleExchanges().map((id) => loadExecution(id))).catch(() => {});
-            }
+            initializeExecutionPanels().then(() => {
+                strategies.forEach((s) => loadExecution(s._id).catch(() => {}));
+            });
         });
 
-        initializeExecutionPanels();
-        Promise.all(getVisibleExchanges().map((id) => loadExecution(id))).catch(() => {});
+        initializeExecutionPanels().then(() => {
+            strategies.forEach((s) => loadExecution(s._id).catch(() => {}));
+        });
     </script>
 </body>
 </html>

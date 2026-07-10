@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Saldos - ArbTrade</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <main class="main-content" role="main">
+        <div class="shell">
+            <section class="hero">
+                <div class="hero-top">
+                    <div>
+                        <div class="eyebrow">Carteira</div>
+                        <h1>Saldos Consolidados</h1>
+                    </div>
+                    <div class="hero-status-group">
+                        <div class="status-pill status-pill-wide" id="total-usdt-pill" style="border-color: rgba(125, 249, 193, 0.4); background: rgba(125, 249, 193, 0.05);">
+                            <span class="status-caption" style="color: var(--accent);">Saldo Geral Estimado</span>
+                            <strong id="total-usdt-value" style="font-family: var(--font-mono); font-size: 1.1rem; color: var(--text-primary);">$ 0.00</strong>
+                        </div>
+                        <div class="status-pill" id="bal-status">
+                            <span class="status-dot" id="bal-dot"></span>
+                            <span id="bal-label">Inicializando...</span>
+                        </div>
+                    </div>
+                </div>
+                <p>Visão consolidada de saldos em dólar e criptomoedas em suas exchanges configuradas.</p>
+                <div class="actions">
+                    <button class="primary" id="bal-refresh" type="button">Atualizar Saldos</button>
+                </div>
+                <span id="bal-feedback" class="mono hero-feedback" role="status" aria-live="polite"></span>
+            </section>
+
+            <section class="workspace-section">
+                <div class="section-heading">
+                    <div>
+                        <div class="eyebrow">Saldos</div>
+                        <h2>Saldos por Corretora</h2>
+                    </div>
+                    <p>Saldos disponíveis em cada uma das exchanges ativas no sistema.</p>
+                </div>
+                <section class="exchange-grid" id="bal-grid"></section>
+            </section>
+
+            <section class="workspace-section" style="margin-top: var(--space-8);">
+                <div class="section-heading">
+                    <div>
+                        <div class="eyebrow">Histórico</div>
+                        <h2>Trades Diretos</h2>
+                    </div>
+                    <p>Operações de compra e venda simples executadas diretamente via painel de saldos.</p>
+                </div>
+                <section class="panel">
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Data/Hora</th>
+                                    <th>Corretora</th>
+                                    <th>Par</th>
+                                    <th>Operação</th>
+                                    <th style="text-align: right;">Quantidade</th>
+                                    <th style="text-align: right;">Preço</th>
+                                    <th style="text-align: right;">Total Estimado</th>
+                                    <th style="text-align: right;">Taxa</th>
+                                    <th>ID da Ordem</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="simple-trades-list">
+                                <tr>
+                                    <td colspan="10" class="empty">Carregando operações...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="pagination" style="display: flex; align-items: center; justify-content: space-between; margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--border-card);">
+                        <button class="secondary btn-pagination" id="btn-prev-simple" disabled type="button">&larr; Anterior</button>
+                        <span class="mono text-secondary" id="page-indicator-simple" style="font-size: 0.9rem;">Página 1</span>
+                        <button class="secondary btn-pagination" id="btn-next-simple" disabled type="button">Próxima &rarr;</button>
+                    </div>
+                </section>
+            </section>
+        </div>
+    </main>
+
+    <!-- Modal de Trade -->
+    <div id="trade-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center;">
+        <div class="panel" style="width: 100%; max-width: 450px; padding: 24px; background: var(--bg-card); border: 1px solid var(--border-card); border-radius: var(--radius-2xl); box-shadow: var(--shadow-lg);">
+            <div class="form-header" style="margin-bottom: var(--space-4);">
+                <h3 style="margin: 0; font-size: 1.25rem; color: var(--text-primary);">Executar Trade Simples</h3>
+                <p style="font-size: 0.85rem; color: var(--text-secondary); margin: 4px 0 0 0;">Negocie ativos a mercado diretamente na corretora.</p>
+            </div>
+            <form id="trade-form" style="display: grid; gap: var(--space-4);">
+                <!-- Operação (Compra / Venda) -->
+                <div class="form-group" style="display: flex; flex-direction: column; gap: 4px;">
+                    <label style="font-size: 0.85rem; color: var(--text-secondary);">Operação</label>
+                    <div style="display: flex; gap: 8px;">
+                        <button type="button" id="btn-trade-buy" style="flex: 1; padding: 8px; font-weight: bold; border-radius: var(--radius-md); border: 1px solid var(--border-card); background: var(--bg-card); color: var(--text-secondary); cursor: pointer;">COMPRA</button>
+                        <button type="button" id="btn-trade-sell" class="primary" style="flex: 1; padding: 8px; font-weight: bold; border-radius: var(--radius-md); border: 1px solid #f6465d; background: #f6465d; color: white; cursor: pointer;">VENDA</button>
+                    </div>
+                </div>
+
+                <div class="form-group" style="display: flex; flex-direction: column; gap: 4px;">
+                    <label style="font-size: 0.85rem; color: var(--text-secondary);">Corretora</label>
+                    <input type="text" id="trade-exchange1" readonly style="background: var(--bg-hover); border: 1px solid var(--border-card); color: var(--text-primary); padding: 8px 12px; border-radius: var(--radius-md);" />
+                </div>
+                <div class="form-group" style="display: flex; flex-direction: column; gap: 4px;">
+                    <label style="font-size: 0.85rem; color: var(--text-secondary);">Moeda de Negociação (Base)</label>
+                    <input type="text" id="trade-asset1" readonly style="background: var(--bg-hover); border: 1px solid var(--border-card); color: var(--text-primary); padding: 8px 12px; border-radius: var(--radius-md);" />
+                </div>
+                <div class="form-group" style="display: flex; flex-direction: column; gap: 4px;">
+                    <label for="trade-asset2" style="font-size: 0.85rem; color: var(--text-secondary);">Moeda de Troca (Quote) *</label>
+                    <input type="text" id="trade-asset2" required value="USDC" style="background: var(--bg-card); border: 1px solid var(--border-card); color: var(--text-primary); padding: 8px 12px; border-radius: var(--radius-md);" />
+                </div>
+                <!-- Negociar por -->
+                <div class="form-group" style="display: flex; flex-direction: column; gap: 4px;">
+                    <label style="font-size: 0.85rem; color: var(--text-secondary);">Negociar por</label>
+                    <div style="display: flex; gap: 8px;">
+                        <button type="button" id="btn-mode-base" style="flex: 1; padding: 8px; font-size: 0.8rem; font-weight: bold; border-radius: var(--radius-md); border: 1px solid var(--accent); background: var(--accent); color: white; cursor: pointer;">Quantidade (<span id="lbl-mode-base-coin">COIN</span>)</button>
+                        <button type="button" id="btn-mode-quote" style="flex: 1; padding: 8px; font-size: 0.8rem; font-weight: bold; border-radius: var(--radius-md); border: 1px solid var(--border-card); background: var(--bg-card); color: var(--text-secondary); cursor: pointer;">Total (<span id="lbl-mode-quote-coin">USDC</span>)</button>
+                    </div>
+                </div>
+                <div class="form-group" style="display: flex; flex-direction: column; gap: 4px;">
+                    <label id="lbl-trade-amount" for="trade-amount" style="font-size: 0.85rem; color: var(--text-secondary);">Quantidade a Vender *</label>
+                    <input type="number" id="trade-amount" required step="any" min="0.00000001" style="background: var(--bg-card); border: 1px solid var(--border-card); color: var(--text-primary); padding: 8px 12px; border-radius: var(--radius-md);" />
+                    
+                    <!-- Range slider for percentage of balance -->
+                    <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px; margin-bottom: 8px;">
+                        <input type="range" id="trade-range" min="0" max="100" value="100" style="width: 100%; accent-color: var(--accent); cursor: pointer;" />
+                        <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-secondary);">
+                            <span>0%</span>
+                            <span>25%</span>
+                            <span>50%</span>
+                            <span>75%</span>
+                            <span id="trade-range-label" style="color: var(--accent); font-weight: bold;">100%</span>
+                        </div>
+                    </div>
+
+                    <span style="font-size: 0.8rem; color: var(--accent); margin-top: 2px;">Valor Estimado: $ <span id="trade-usd-estimation" style="font-weight: bold;">0.00</span></span>
+                </div>
+                <div style="display: flex; gap: var(--space-3); justify-content: flex-end; margin-top: var(--space-2);">
+                    <button type="button" class="secondary" id="btn-close-trade" style="padding: 8px 16px;">Cancelar</button>
+                    <button type="submit" id="btn-trade-submit" class="primary" style="padding: 8px 16px; background: #f6465d; border-color: #f6465d;">Executar Trade</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="/js/config.js"></script>
+    <script type="module" src="/app.js"></script>
+    <script type="module">
+        import {
+            buildApiUrl,
+            escapeHtml,
+            formatNumber,
+            formatDateTime,
+            getExchangeTitle,
+            getVisibleExchanges,
+            showToast,
+            fetchJson
+        } from './js/shared.js';
+
+        const balGrid = document.getElementById('bal-grid');
+        const balFeedback = document.getElementById('bal-feedback');
+        const balStatusLabel = document.getElementById('bal-label');
+        const balStatusDot = document.getElementById('bal-dot');
+        const refreshButton = document.getElementById('bal-refresh');
+
+        const balanceViews = new Map();
+
+        function updateStatusLabel() {
+            if (balanceViews.size > 0) {
+                balStatusDot.style.background = 'var(--accent)';
+                balStatusDot.style.boxShadow = 'var(--shadow-glow-accent)';
+                balStatusLabel.textContent = 'Carregado';
+            } else {
+                balStatusDot.style.background = 'var(--warn)';
+                balStatusDot.style.boxShadow = 'var(--shadow-glow-warn)';
+                balStatusLabel.textContent = 'Sem dados';
+            }
+        }
+
+        function createBalancePanelMarkup(exchangeId) {
+            return `
+                <article class="exchange-panel" data-exchange="${exchangeId}">
+                    <div class="exchange-panel-top">
+                        <div>
+                            <p class="route">${getExchangeTitle(exchangeId)}</p>
+                            <div class="exchange-feedback mono" data-role="bal-feedback">Aguardando carregamento...</div>
+                        </div>
+                    </div>
+                    <div class="exchange-status-meta">
+                        <article class="status-card">
+                            <span class="status-card-label">Exchange</span>
+                            <span class="status-card-value">${getExchangeTitle(exchangeId)}</span>
+                        </article>
+                        <article class="status-card">
+                            <span class="status-card-label">Total Ativos</span>
+                            <span class="status-card-value" data-role="total-assets">0</span>
+                        </article>
+                        <article class="status-card">
+                            <span class="status-card-label">Saldo em Dólar</span>
+                            <span class="status-card-value" data-role="exchange-usd-value">$ 0.00</span>
+                        </article>
+                        <article class="status-card">
+                            <span class="status-card-label">Última atualização</span>
+                            <span class="status-card-value" data-role="last-update">Aguardando...</span>
+                        </article>
+                    </div>
+                    <section class="panel exchange-section">
+                        <h2>Saldos</h2>
+                        <div class="metrics" data-role="balances">
+                            <div class="empty">Carregando saldos...</div>
+                        </div>
+                    </section>
+                </article>
+            `;
+        }
+
+        async function backendRequest(action, exchangeId) {
+            try {
+                let url;
+                switch (action) {
+                    case 'cross-market-status':
+                        url = buildApiUrl(`cross-market/status`);
+                        break;
+                    case 'cross-market-balances':
+                        url = buildApiUrl(`cross-market/${exchangeId}/balances`);
+                        break;
+                    default:
+                        throw new Error(`Ação não suportada: ${action}`);
+                }
+
+                const token = localStorage.getItem('authToken');
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                });
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Falha na requisição.');
+                }
+
+                return data;
+            } catch (error) {
+                throw error;
+            }
+        }
+
+        function renderBalances(view, balances, exchangeId) {
+            if (!balances || !Array.isArray(balances) || balances.length === 0) {
+                view.balances.innerHTML = '<div class="empty">Nenhum saldo disponível.</div>';
+                return;
+            }
+
+            view.balances.innerHTML = balances.map((item) => {
+                const feeText = item.transferFee !== null && typeof item.transferFee !== 'undefined'
+                    ? formatNumber(item.transferFee, 8)
+                    : '--';
+                
+                const minWithdrawText = item.minWithdraw !== null && typeof item.minWithdraw !== 'undefined'
+                    ? formatNumber(item.minWithdraw, 8)
+                    : '--';
+                
+                const valueUsdtText = item.valueUsdt !== null && typeof item.valueUsdt !== 'undefined'
+                    ? formatNumber(item.valueUsdt, 2)
+                    : '--';
+                
+                const priceText = item.price !== null && typeof item.price !== 'undefined'
+                    ? formatNumber(item.price, item.price < 0.01 ? 8 : (item.price < 1 ? 6 : 4))
+                    : '--';
+                
+                const coinName = (item.currency || item.coin || 'N/A').toUpperCase();
+                const iconUrl = `https://assets.coincap.io/assets/icons/${coinName.toLowerCase()}@2x.png`;
+                const fallbackUrl = `https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/${coinName.toLowerCase()}.png`;
+
+                return `
+                <article class="log-card" style="position: relative;">
+                    <div class="row" style="display: flex; align-items: center; justify-content: space-between;">
+                        <span>Moeda</span>
+                        <strong class="positive" style="display: inline-flex; align-items: center; gap: 6px;">
+                            <img src="${iconUrl}" 
+                                 onerror="this.onerror=null; this.src='${fallbackUrl}'; this.addEventListener('error', () => { this.style.display='none'; })" 
+                                 alt="" 
+                                 style="width: 18px; height: 18px; border-radius: 50%; vertical-align: middle; object-fit: contain;" />
+                            ${escapeHtml(coinName)}
+                        </strong>
+                    </div>
+                    <div class="row">
+                        <span>Total</span>
+                        <strong>${formatNumber(item.total || item.free || 0, 8)}</strong>
+                    </div>
+                    <div class="row">
+                        <span>Disponível</span>
+                        <strong class="positive">${formatNumber(item.free || item.available || 0, 8)}</strong>
+                    </div>
+                    <div class="row">
+                        <span>Em ordens</span>
+                        <strong>${formatNumber(item.used || item.hold || 0, 8)}</strong>
+                    </div>
+                    <div class="row">
+                        <span>Preço (USDT)</span>
+                        <strong>${priceText}</strong>
+                    </div>
+                    <div class="row">
+                        <span>Valor em USDT</span>
+                        <strong class="${item.valueUsdt !== null ? 'positive' : ''}">${valueUsdtText}</strong>
+                    </div>
+                    <div class="row" style="margin-top: 10px; border-top: 1px solid var(--border-card); padding-top: 8px; display: flex; justify-content: flex-end;">
+                        <button class="primary btn-trade" data-exchange="${escapeHtml(exchangeId)}" data-coin="${escapeHtml(coinName)}" data-free="${item.free || item.available || 0}" data-price="${item.price || 0}" style="padding: 4px 12px; font-size: 0.8rem; border-radius: var(--radius-md);">Trade</button>
+                    </div>
+                </article>
+            `;
+            }).join('');
+        }
+
+        const exchangeAssetsMap = new Map();
+
+        function calculateTotalUsdt() {
+            let total = 0;
+            exchangeAssetsMap.forEach((assets) => {
+                assets.forEach((asset) => {
+                    if (asset && typeof asset.valueUsdt === 'number') {
+                        total += asset.valueUsdt;
+                    }
+                });
+            });
+            const totalEl = document.getElementById('total-usdt-value');
+            if (totalEl) {
+                totalEl.textContent = '$ ' + total.toFixed(2);
+            }
+        }
+
+        async function loadBalances(exchangeId) {
+            const view = balanceViews.get(exchangeId);
+            if (!view) return;
+
+            view.refreshButton && (view.refreshButton.disabled = true);
+            view.feedback.textContent = 'Atualizando...';
+
+            try {
+                const [statusData, balancesData] = await Promise.all([
+                    backendRequest('cross-market-status', exchangeId),
+                    backendRequest('cross-market-balances', exchangeId)
+                ]);
+
+                view.lastUpdate.textContent = new Date().toLocaleString();
+                
+                const exchangeBalance = balancesData && balancesData.balances
+                    ? balancesData.balances.find(b => b.exchange === exchangeId.toUpperCase())
+                    : null;
+                let assets = (exchangeBalance && Array.isArray(exchangeBalance.assets)) ? exchangeBalance.assets : [];
+                
+                assets = assets.filter(asset => asset.valueUsdt !== null && asset.valueUsdt !== undefined && asset.valueUsdt >= 0.1);
+                
+                exchangeAssetsMap.set(exchangeId, assets);
+                calculateTotalUsdt();
+
+                let exchangeTotalUsdt = 0;
+                assets.forEach((asset) => {
+                    if (asset && typeof asset.valueUsdt === 'number') {
+                        exchangeTotalUsdt += asset.valueUsdt;
+                    }
+                });
+                if (view.exchangeUsdValue) {
+                    view.exchangeUsdValue.textContent = '$ ' + exchangeTotalUsdt.toFixed(2);
+                }
+
+                view.totalAssets.textContent = assets.length;
+                renderBalances(view, assets, exchangeId);
+                
+                if (assets.length === 0) {
+                    view.root.style.display = 'none';
+                } else {
+                    view.root.style.display = '';
+                }
+                
+                if (exchangeBalance && exchangeBalance.error) {
+                    view.feedback.textContent = `Erro: ${exchangeBalance.error}`;
+                    view.root.style.display = '';
+                } else {
+                    view.feedback.textContent = 'Saldos atualizados.';
+                }
+            } catch (error) {
+                view.feedback.textContent = error.message;
+                view.root.style.display = '';
+            } finally {
+                view.refreshButton && (view.refreshButton.disabled = false);
+            }
+        }
+
+        function initializeBalancePanels() {
+            const visibleExchanges = getVisibleExchanges();
+            balGrid.innerHTML = visibleExchanges.map(createBalancePanelMarkup).join('');
+
+            visibleExchanges.forEach((exchangeId) => {
+                const root = balGrid.querySelector(`[data-exchange="${exchangeId}"]`);
+                const view = {
+                    exchangeId,
+                    root,
+                    feedback: root.querySelector('[data-role="bal-feedback"]'),
+                    lastUpdate: root.querySelector('[data-role="last-update"]'),
+                    totalAssets: root.querySelector('[data-role="total-assets"]'),
+                    exchangeUsdValue: root.querySelector('[data-role="exchange-usd-value"]'),
+                    balances: root.querySelector('[data-role="balances"]'),
+                    refreshButton: root.querySelector('[data-role="bal-refresh"]')
+                };
+
+                if (view.refreshButton) {
+                    view.refreshButton.addEventListener('click', () => loadBalances(exchangeId));
+                }
+
+                view.balances.addEventListener('click', (e) => {
+                    const btn = e.target.closest('.btn-trade');
+                    if (btn) {
+                        const exchange = btn.dataset.exchange;
+                        const coin = btn.dataset.coin;
+                        const free = parseFloat(btn.dataset.free || 0);
+                        const price = parseFloat(btn.dataset.price || 0);
+                        openTradeModal(exchange, coin, free, price);
+                    }
+                });
+
+                balanceViews.set(exchangeId, view);
+            });
+
+            updateStatusLabel();
+        }
+
+        async function refreshAllBalances() {
+            refreshButton.disabled = true;
+            balFeedback.textContent = 'Atualizando saldos...';
+
+            try {
+                await Promise.all(getVisibleExchanges().map((id) => loadBalances(id)));
+                balFeedback.textContent = 'Saldos atualizados.';
+            } catch (error) {
+                balFeedback.textContent = error.message;
+            } finally {
+                refreshButton.disabled = false;
+            }
+        }
+
+        if (refreshButton) {
+            refreshButton.addEventListener('click', refreshAllBalances);
+        }
+
+        window.addEventListener('load-dashboard', () => {
+            if (balanceViews.size === 0) {
+                initializeBalancePanels();
+                Promise.all(getVisibleExchanges().map((id) => loadBalances(id))).catch(() => {});
+            }
+        });
+
+        window.addEventListener('init-panels', () => {
+            if (balanceViews.size === 0) {
+                initializeBalancePanels();
+                Promise.all(getVisibleExchanges().map((id) => loadBalances(id))).catch(() => {});
+            }
+        });
+
+        // ===== Modal de Trade e Ações =====
+        const tradeModal = document.getElementById('trade-modal');
+        const tradeForm = document.getElementById('trade-form');
+        const btnCloseTrade = document.getElementById('btn-close-trade');
+        const tradeRange = document.getElementById('trade-range');
+        const tradeRangeLabel = document.getElementById('trade-range-label');
+        const btnTradeBuy = document.getElementById('btn-trade-buy');
+        const btnTradeSell = document.getElementById('btn-trade-sell');
+        const btnTradeSubmit = document.getElementById('btn-trade-submit');
+        const lblTradeAmount = document.getElementById('lbl-trade-amount');
+        const btnModeBase = document.getElementById('btn-mode-base');
+        const btnModeQuote = document.getElementById('btn-mode-quote');
+        const lblModeBaseCoin = document.getElementById('lbl-mode-base-coin');
+        const lblModeQuoteCoin = document.getElementById('lbl-mode-quote-coin');
+
+        let currentCoinPrice = 0;
+        let maxFreeAmount = 0;
+        let baseFreeAmount = 0;
+        let quoteFreeAmount = 0;
+        let currentTradeSide = 'sell'; // default to 'sell'
+        let currentTradeMode = 'base'; // 'base' (Quantity) or 'quote' (Total)
+
+        function setTradeSide(side) {
+            currentTradeSide = side;
+            if (side === 'buy') {
+                btnTradeBuy.style.background = '#2ebd85';
+                btnTradeBuy.style.borderColor = '#2ebd85';
+                btnTradeBuy.style.color = 'white';
+                
+                btnTradeSell.style.background = 'var(--bg-card)';
+                btnTradeSell.style.borderColor = 'var(--border-card)';
+                btnTradeSell.style.color = 'var(--text-secondary)';
+
+                btnTradeSubmit.style.background = '#2ebd85';
+                btnTradeSubmit.style.borderColor = '#2ebd85';
+                btnTradeSubmit.textContent = 'Executar Compra';
+            } else {
+                btnTradeSell.style.background = '#f6465d';
+                btnTradeSell.style.borderColor = '#f6465d';
+                btnTradeSell.style.color = 'white';
+                
+                btnTradeBuy.style.background = 'var(--bg-card)';
+                btnTradeBuy.style.borderColor = 'var(--border-card)';
+                btnTradeBuy.style.color = 'var(--text-secondary)';
+
+                btnTradeSubmit.style.background = '#f6465d';
+                btnTradeSubmit.style.borderColor = '#f6465d';
+                btnTradeSubmit.textContent = 'Executar Venda';
+            }
+
+            // Reprocess the mode labels and limits
+            setTradeMode(currentTradeMode);
+        }
+
+        function setTradeMode(mode) {
+            currentTradeMode = mode;
+            if (mode === 'base') {
+                btnModeBase.style.background = 'var(--accent)';
+                btnModeBase.style.borderColor = 'var(--accent)';
+                btnModeBase.style.color = 'white';
+
+                btnModeQuote.style.background = 'var(--bg-card)';
+                btnModeQuote.style.borderColor = 'var(--border-card)';
+                btnModeQuote.style.color = 'var(--text-secondary)';
+
+                lblTradeAmount.textContent = currentTradeSide === 'buy' ? 'Quantidade a Comprar *' : 'Quantidade a Vender *';
+                
+                if (currentTradeSide === 'buy') {
+                    maxFreeAmount = currentCoinPrice > 0 ? (quoteFreeAmount / currentCoinPrice) : 0;
+                } else {
+                    maxFreeAmount = baseFreeAmount;
+                }
+            } else {
+                btnModeQuote.style.background = 'var(--accent)';
+                btnModeQuote.style.borderColor = 'var(--accent)';
+                btnModeQuote.style.color = 'white';
+
+                btnModeBase.style.background = 'var(--bg-card)';
+                btnModeBase.style.borderColor = 'var(--border-card)';
+                btnModeBase.style.color = 'var(--text-secondary)';
+
+                lblTradeAmount.textContent = currentTradeSide === 'buy' ? 'Valor Total a Gastar (USDC) *' : 'Valor Total a Receber (USDC) *';
+                
+                if (currentTradeSide === 'buy') {
+                    maxFreeAmount = quoteFreeAmount;
+                } else {
+                    maxFreeAmount = baseFreeAmount * currentCoinPrice;
+                }
+            }
+
+            document.getElementById('trade-amount').value = maxFreeAmount > 0 ? parseFloat(maxFreeAmount.toFixed(8)) : '0';
+            if (tradeRange) {
+                tradeRange.value = 100;
+            }
+            if (tradeRangeLabel) {
+                tradeRangeLabel.textContent = '100%';
+            }
+            updateUsdEstimation();
+        }
+
+        if (btnTradeBuy) {
+            btnTradeBuy.addEventListener('click', () => setTradeSide('buy'));
+        }
+        if (btnTradeSell) {
+            btnTradeSell.addEventListener('click', () => setTradeSide('sell'));
+        }
+        if (btnModeBase) {
+            btnModeBase.addEventListener('click', () => setTradeMode('base'));
+        }
+        if (btnModeQuote) {
+            btnModeQuote.addEventListener('click', () => setTradeMode('quote'));
+        }
+
+        function updateUsdEstimation() {
+            const val = parseFloat(document.getElementById('trade-amount').value) || 0;
+            const estEl = document.getElementById('trade-usd-estimation');
+            if (estEl) {
+                const totalUsd = currentTradeMode === 'base' ? (val * currentCoinPrice) : val;
+                estEl.textContent = totalUsd.toFixed(2);
+            }
+            
+            if (maxFreeAmount > 0 && tradeRange) {
+                const percentage = Math.min(100, Math.max(0, (val / maxFreeAmount) * 100));
+                tradeRange.value = percentage;
+                if (tradeRangeLabel) {
+                    tradeRangeLabel.textContent = Math.round(percentage) + '%';
+                }
+            }
+        }
+
+        const tradeAmountInput = document.getElementById('trade-amount');
+        if (tradeAmountInput) {
+            tradeAmountInput.addEventListener('input', updateUsdEstimation);
+        }
+
+        if (tradeRange) {
+            tradeRange.addEventListener('input', () => {
+                const percentage = parseFloat(tradeRange.value) || 0;
+                if (tradeRangeLabel) {
+                    tradeRangeLabel.textContent = Math.round(percentage) + '%';
+                }
+                const calculatedAmount = (percentage / 100) * maxFreeAmount;
+                tradeAmountInput.value = calculatedAmount > 0 ? parseFloat(calculatedAmount.toFixed(8)) : 0;
+                
+                const estEl = document.getElementById('trade-usd-estimation');
+                if (estEl) {
+                    const totalUsd = currentTradeMode === 'base' ? (calculatedAmount * currentCoinPrice) : calculatedAmount;
+                    estEl.textContent = totalUsd.toFixed(2);
+                }
+            });
+        }
+
+        function openTradeModal(exchangeId, coinName, freeAmount, price) {
+            currentCoinPrice = price || 0;
+            baseFreeAmount = freeAmount || 0;
+
+            const assets = exchangeAssetsMap.get(exchangeId.toLowerCase()) || [];
+            const quoteAssetObj = assets.find(a => a.currency === 'USDC' || a.coin === 'USDC');
+            quoteFreeAmount = quoteAssetObj ? (quoteAssetObj.free || quoteAssetObj.available || 0) : 0;
+
+            document.getElementById('trade-exchange1').value = exchangeId.toUpperCase();
+            document.getElementById('trade-asset1').value = coinName.toUpperCase();
+            document.getElementById('trade-asset2').value = 'USDC';
+
+            if (lblModeBaseCoin) lblModeBaseCoin.textContent = coinName.toUpperCase();
+            if (lblModeQuoteCoin) lblModeQuoteCoin.textContent = 'USDC';
+
+            currentTradeSide = 'sell';
+            currentTradeMode = 'base';
+
+            btnTradeSell.style.background = '#f6465d';
+            btnTradeSell.style.borderColor = '#f6465d';
+            btnTradeSell.style.color = 'white';
+
+            btnTradeBuy.style.background = 'var(--bg-card)';
+            btnTradeBuy.style.borderColor = 'var(--border-card)';
+            btnTradeBuy.style.color = 'var(--text-secondary)';
+
+            btnTradeSubmit.style.background = '#f6465d';
+            btnTradeSubmit.style.borderColor = '#f6465d';
+            btnTradeSubmit.textContent = 'Executar Venda';
+
+            setTradeMode('base');
+            
+            tradeModal.style.display = 'flex';
+        }
+
+        if (btnCloseTrade) {
+            btnCloseTrade.addEventListener('click', () => {
+                tradeModal.style.display = 'none';
+            });
+        }
+
+        if (tradeForm) {
+            tradeForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const exchangeId = document.getElementById('trade-exchange1').value;
+                const asset1 = document.getElementById('trade-asset1').value;
+                const asset2 = document.getElementById('trade-asset2').value.toUpperCase();
+                const inputVal = parseFloat(document.getElementById('trade-amount').value);
+
+                let amount = inputVal;
+                if (currentTradeMode === 'quote') {
+                    amount = currentCoinPrice > 0 ? (inputVal / currentCoinPrice) : 0;
+                }
+
+                const symbol = `${asset1}/${asset2}`;
+
+                const originalBtnText = btnTradeSubmit.textContent;
+                btnTradeSubmit.disabled = true;
+                btnTradeSubmit.textContent = 'Executando...';
+
+                try {
+                    const res = await fetchJson(buildApiUrl(`cross-market/${exchangeId}/trade`), {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            symbol,
+                            side: currentTradeSide,
+                            amount
+                        })
+                    });
+
+                    showToast(res.message || 'Trade simples executado com sucesso!', 'success');
+                    tradeModal.style.display = 'none';
+
+                    // Aguarda 1.5s para liquidação da ordem antes de recarregar saldos
+                    setTimeout(() => {
+                        loadBalances(exchangeId.toLowerCase()).catch(() => {});
+                    }, 1500);
+
+                    fetchSimpleTrades().catch(() => {});
+                } catch (err) {
+                    showToast(err.message, 'error');
+                } finally {
+                    btnTradeSubmit.disabled = false;
+                    btnTradeSubmit.textContent = originalBtnText;
+                }
+            });
+        }
+
+        let simpleTradesPage = 1;
+        const simpleTradesLimit = 10;
+        let totalSimpleTrades = 0;
+
+        const simpleTradesList = document.getElementById('simple-trades-list');
+        const btnPrevSimple = document.getElementById('btn-prev-simple');
+        const btnNextSimple = document.getElementById('btn-next-simple');
+        const pageIndicatorSimple = document.getElementById('page-indicator-simple');
+
+        async function fetchSimpleTrades() {
+            try {
+                const skip = (simpleTradesPage - 1) * simpleTradesLimit;
+                const data = await fetchJson(buildApiUrl(`cross-market/simple-trades?limit=${simpleTradesLimit}&skip=${skip}`));
+
+                totalSimpleTrades = data.total || 0;
+                renderSimpleTradesTable(data.trades || []);
+                updateSimplePaginationControls();
+            } catch (err) {
+                if (simpleTradesList) {
+                    simpleTradesList.innerHTML = `<tr><td colspan="10" class="empty" style="color: var(--danger);">Erro ao carregar histórico: ${escapeHtml(err.message)}</td></tr>`;
+                }
+            }
+        }
+
+        function renderSimpleTradesTable(trades) {
+            if (!simpleTradesList) return;
+            
+            if (trades.length === 0) {
+                simpleTradesList.innerHTML = '<tr><td colspan="10" class="empty">Nenhum trade direto registrado.</td></tr>';
+                return;
+            }
+
+            simpleTradesList.innerHTML = trades.map((t) => {
+                const date = formatDateTime(t.created_at || t.timestamp);
+                const sideClass = String(t.side).toUpperCase() === 'BUY' ? 'positive' : 'negative';
+                const statusClass = String(t.status).toUpperCase() === 'SUCCESS' ? 'badge-success' : 'badge-danger';
+                const statusLabel = String(t.status).toUpperCase() === 'SUCCESS' ? 'SUCESSO' : 'FALHA';
+
+                const priceValue = t.price || 0;
+                const amountValue = t.amount || 0;
+                const totalValue = priceValue * amountValue;
+
+                const priceText = priceValue > 0 ? formatNumber(priceValue, priceValue < 0.01 ? 8 : (priceValue < 1 ? 6 : 4)) : '--';
+                const totalText = totalValue > 0 ? '$ ' + formatNumber(totalValue, 2) : '--';
+                
+                const feeText = t.fee && t.fee.cost > 0 
+                    ? formatNumber(t.fee.cost, t.fee.cost < 0.0001 ? 8 : (t.fee.cost < 0.01 ? 6 : 4)) + ' ' + escapeHtml(t.fee.currency)
+                    : '--';
+                
+                const errorInfo = t.status === 'FAILED' && t.errorMessage 
+                    ? `<div style="font-size: 0.75rem; color: var(--danger); margin-top: 4px; font-family: var(--font-mono);">${escapeHtml(t.errorMessage)}</div>` 
+                    : '';
+
+                return `
+                    <tr>
+                        <td class="mono" style="font-size: 0.8rem;">${date}</td>
+                        <td><strong>${escapeHtml(t.exchange)}</strong></td>
+                        <td class="mono">${escapeHtml(t.symbol)}</td>
+                        <td><span class="${sideClass}" style="font-weight: bold;">${escapeHtml(t.side)}</span></td>
+                        <td class="mono" style="text-align: right;">${formatNumber(amountValue, 8)}</td>
+                        <td class="mono" style="text-align: right;">${priceText}</td>
+                        <td class="mono" style="text-align: right;"><strong>${totalText}</strong></td>
+                        <td class="mono" style="font-size: 0.8rem; text-align: right;">${feeText}</td>
+                        <td class="mono text-secondary" style="font-size: 0.8rem;">${escapeHtml(t.orderId || '-')}</td>
+                        <td>
+                            <span class="badge ${statusClass}" style="padding: 2px 8px; border-radius: var(--radius-sm); font-size: 0.75rem; font-weight: bold;">${statusLabel}</span>
+                            ${errorInfo}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function updateSimplePaginationControls() {
+            if (!pageIndicatorSimple || !btnPrevSimple || !btnNextSimple) return;
+            const totalPages = Math.ceil(totalSimpleTrades / simpleTradesLimit) || 1;
+            pageIndicatorSimple.textContent = `Página ${simpleTradesPage} de ${totalPages}`;
+            btnPrevSimple.disabled = simpleTradesPage === 1;
+            btnNextSimple.disabled = simpleTradesPage >= totalPages;
+        }
+
+        if (btnPrevSimple) {
+            btnPrevSimple.addEventListener('click', () => {
+                if (simpleTradesPage > 1) {
+                    simpleTradesPage--;
+                    fetchSimpleTrades();
+                }
+            });
+        }
+
+        if (btnNextSimple) {
+            btnNextSimple.addEventListener('click', () => {
+                const totalPages = Math.ceil(totalSimpleTrades / simpleTradesLimit) || 1;
+                if (simpleTradesPage < totalPages) {
+                    simpleTradesPage++;
+                    fetchSimpleTrades();
+                }
+            });
+        }
+
+        initializeBalancePanels();
+        Promise.all(getVisibleExchanges().map((id) => loadBalances(id))).catch(() => {});
+        fetchSimpleTrades().catch(() => {});
+    </script>
+</body>
+</html>

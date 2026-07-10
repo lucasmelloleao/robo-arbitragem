@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Execução Arbitragem Clássica - ArbTrade</title>
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+        .strategy-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: var(--space-6);
+        }
+        .console-log-box {
+            background: #060b13;
+            border: 1px solid var(--border-primary);
+            border-radius: var(--radius-md);
+            padding: var(--space-3);
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            color: #7df9c1;
+            max-height: 250px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            margin-top: var(--space-2);
+        }
+    </style>
+</head>
+<body>
+    <main class="shell">
+        <section class="hero">
+            <div class="hero-top">
+                <div>
+                    <div class="eyebrow">Execução</div>
+                    <h1>Arbitragem Clássica</h1>
+                </div>
+                <div class="hero-status-group">
+                    <div class="status-pill" id="exec-status">
+                        <span class="status-dot" id="exec-dot"></span>
+                        <span id="exec-label">Inicializando...</span>
+                    </div>
+                </div>
+            </div>
+            <p>Acompanhamento em tempo real das varreduras triangulares e execução das estratégias de arbitragem clássica.</p>
+            <div class="actions">
+                <button class="secondary" id="exec-listen-all" type="button">Escutar Todas</button>
+                <button class="secondary" id="exec-refresh" type="button">Atualizar</button>
+            </div>
+            <span id="exec-feedback" class="mono hero-feedback" role="status" aria-live="polite"></span>
+        </section>
+
+        <section class="workspace-section">
+            <div class="section-heading">
+                <div>
+                    <div class="eyebrow">Execução</div>
+                    <h2>Estratégias de Arbitragem</h2>
+                </div>
+                <p>Painéis de execução e acompanhamento de oportunidades por estratégia.</p>
+            </div>
+            <section class="strategy-grid" id="exec-grid"></section>
+        </section>
+    </main>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container"></div>
+
+    <script src="/js/config.js"></script>
+    <script type="module">
+        import { buildApiUrl, escapeHtml, formatDateTime, formatNumber, showToast } from './js/shared.js';
+
+        const execGrid = document.getElementById('exec-grid');
+        const execFeedback = document.getElementById('exec-feedback');
+        const execStatusLabel = document.getElementById('exec-label');
+        const execStatusDot = document.getElementById('exec-dot');
+        const listenAllButton = document.getElementById('exec-listen-all');
+        const refreshButton = document.getElementById('exec-refresh');
+
+        const executionViews = new Map();
+        const activeSockets = new Map(); // strategyId -> WebSocket
+        const runningStrategies = new Set(); // strategyId -> running state
+        let strategies = [];
+
+        async function fetchJson(url, options = {}) {
+            options.headers = options.headers || {};
+            const token = localStorage.getItem('authToken');
+            if (token) {
+                options.headers['Authorization'] = `Bearer ${token}`;
+            }
+            const response = await fetch(url, options);
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || 'Erro na requisição');
+            return data;
+        }
+
+        function getSubscribedCount() {
+            return activeSockets.size;
+        }
+
+        function updateListenAllButton() {
+            const count = getSubscribedCount();
+            const allSubscribed = strategies.length > 0 && count === strategies.length;
+            listenAllButton.textContent = allSubscribed ? 'Parar todas' : 'Executar todas';
+            listenAllButton.className = allSubscribed ? 'primary' : 'secondary';
+        }
+
+        function updateStatusLabel() {
+            const count = getSubscribedCount();
+            if (count > 0) {
+                execStatusDot.style.background = 'var(--accent)';
+                execStatusDot.style.boxShadow = 'var(--shadow-glow-accent)';
+                execStatusLabel.textContent = `${count} execução(ões) ativa(s)`;
+            } else {
+                execStatusDot.style.background = 'var(--warn)';
+                execStatusDot.style.boxShadow = 'var(--shadow-glow-warn)';
+                execStatusLabel.textContent = 'Nenhuma execução ativa';
+            }
+        }
+
+        function createStrategyPanelMarkup(strategy) {
+            return `
+                <article class="exchange-panel" data-strategy-id="${strategy._id}">
+                    <div class="exchange-panel-top" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: var(--space-4);">
+                        <div>
+                            <p class="route">${escapeHtml(strategy.name)}</p>
+                            <span style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-top: 4px;">
+                                Corretora: <strong>${escapeHtml(strategy.exchange)}</strong> &middot; Ativos: <strong>${escapeHtml(strategy.startAssets)}</strong>
+                            </span>
+                            <div class="exchange-feedback mono" data-role="exec-feedback" style="margin-top: 8px;">Aguardando execução...</div>
+                        </div>
+                        <div class="actions actions-compact">
+                            <button class="${strategy.isRunning ? 'primary' : 'secondary'}" data-role="exec-toggle" data-id="${strategy._id}">${strategy.isRunning ? 'Parar Execução' : 'Executar'}</button>
+                        </div>
+                    </div>
+
+                    <div class="exchange-status-meta" style="margin-top: 1rem;">
+                        <article class="status-card">
+                            <span class="status-card-label">Última atualização</span>
+                            <span class="status-card-value" data-role="last-update">Aguardando...</span>
+                        </article>
+                        <article class="status-card">
+                            <span class="status-card-label">Status</span>
+                            <span class="status-card-value" data-role="exec-status">Inativo</span>
+                        </article>
+                        <article class="status-card">
+                            <span class="status-card-label">Triângulos</span>
+                            <span class="status-card-value" data-role="triangles-count">0</span>
+                        </article>
+                    </div>
+
+                    <section class="panel exchange-section" style="margin-top: 1rem;">
+                        <h2>Métricas de Configuração</h2>
+                        <div class="metrics">
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; font-size: 0.88rem;">
+                                <div>Valor Operação: <strong>${strategy.investmentAmount} USD</strong></div>
+                                <div>Slippage Max: <strong>${strategy.maxSlippagePercent}%</strong></div>
+                                <div>Modo Trading: <strong>${strategy.enableLiveTrading ? '<span style="color: var(--danger)">REAL</span>' : 'Simulação'}</strong></div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <div class="grid exchange-panel-grid" style="margin-top: 1rem;">
+                        <div class="stack">
+                            <details class="panel exchange-section accordion-item section-accordion" open>
+                                <summary class="accordion-summary section-accordion-summary">
+                                    <span>
+                                        <span class="accordion-title">Logs de Console</span>
+                                        <span class="accordion-subtitle">Métricas e acompanhamento do scanner em tempo real.</span>
+                                    </span>
+                                </summary>
+                                <div class="accordion-body">
+                                    <div class="console-log-box" data-role="logs">Aguardando início da escuta...</div>
+                                </div>
+                            </details>
+                        </div>
+                    </div>
+                </article>
+            `;
+        }
+
+        async function loadStrategies() {
+            try {
+                const res = await fetchJson(buildApiUrl('arbitrage/strategies'));
+                strategies = res.strategies || [];
+                
+                execGrid.innerHTML = '';
+                if (strategies.length === 0) {
+                    execGrid.innerHTML = '<div class="empty" style="grid-column: 1 / -1; text-align: center; padding: var(--space-8); color: var(--text-secondary);">Nenhuma estratégia de arbitragem clássica ativa no momento. Ative uma na página de "Configuração" para monitorar a execução.</div>';
+                    updateListenAllButton();
+                    updateStatusLabel();
+                    return;
+                }
+
+                strategies.forEach(strategy => {
+                    execGrid.insertAdjacentHTML('beforeend', createStrategyPanelMarkup(strategy));
+                    const view = execGrid.querySelector(`.exchange-panel[data-strategy-id="${strategy._id}"]`);
+                    
+                    executionViews.set(strategy._id, {
+                        container: view,
+                        feedback: view.querySelector('[data-role="exec-feedback"]'),
+                        lastUpdate: view.querySelector('[data-role="last-update"]'),
+                        status: view.querySelector('[data-role="exec-status"]'),
+                        triangles: view.querySelector('[data-role="triangles-count"]'),
+                        logs: view.querySelector('[data-role="logs"]'),
+                        btnToggle: view.querySelector('[data-role="exec-toggle"]')
+                    });
+
+                    // Se a estratégia já estiver executando no backend, conecta o listener automaticamente
+                    if (strategy.isRunning) {
+                        startListening(strategy._id);
+                    }
+                });
+
+                updateListenAllButton();
+                updateStatusLabel();
+            } catch (err) {
+                execGrid.innerHTML = `<div class="empty" style="color: var(--danger)">Erro ao carregar estratégias: ${escapeHtml(err.message)}</div>`;
+            }
+        }
+
+        function startListening(strategyId) {
+            if (activeSockets.has(strategyId)) return;
+
+            const view = executionViews.get(strategyId);
+            if (!view) return;
+
+            const hostname = window.location.hostname || 'localhost';
+            const ws = new WebSocket(`ws://${hostname}:8081/ws`);
+            activeSockets.set(strategyId, ws);
+
+            view.logs.textContent = 'Conectando ao console real-time...';
+            view.btnToggle.textContent = 'Parar Execução';
+            view.btnToggle.className = 'primary';
+
+            ws.onopen = () => {
+                view.logs.textContent = 'Conectado! Aguardando dados de varredura...';
+                const token = localStorage.getItem('authToken');
+                ws.send(JSON.stringify({
+                    action: 'subscribe',
+                    exchangeId: strategyId,
+                    token: token
+                }));
+                updateListenAllButton();
+                updateStatusLabel();
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'exchange-update' && data.strategyId === strategyId) {
+                        const payload = data.payload || {};
+                        updatePanelUI(strategyId, payload);
+                    }
+                } catch (e) {
+                    console.error('Erro na mensagem WS:', e);
+                }
+            };
+
+            ws.onerror = (err) => {
+                view.logs.append(`\nErro de conexão WS: ${err.message || 'Falha'}`);
+            };
+
+            ws.onclose = () => {
+                if (activeSockets.get(strategyId) === ws) {
+                    activeSockets.delete(strategyId);
+                    view.logs.append('\nConexão de escuta fechada.');
+                    view.btnToggle.textContent = 'Executar';
+                    view.btnToggle.className = 'secondary';
+                    updateListenAllButton();
+                    updateStatusLabel();
+                }
+            };
+        }
+
+        function stopListening(strategyId) {
+            const ws = activeSockets.get(strategyId);
+            if (ws) {
+                ws.close();
+                activeSockets.delete(strategyId);
+            }
+            const view = executionViews.get(strategyId);
+            if (view) {
+                view.btnToggle.textContent = 'Executar';
+                view.btnToggle.className = 'secondary';
+                view.status.textContent = 'Inativo';
+                view.status.style.color = 'var(--text-secondary)';
+            }
+            updateListenAllButton();
+            updateStatusLabel();
+        }
+
+        function updatePanelUI(strategyId, payload) {
+            const view = executionViews.get(strategyId);
+            if (!view) return;
+
+            view.lastUpdate.textContent = formatDateTime(payload.latestScan?.timestamp || new Date());
+            view.status.textContent = payload.isChecking ? 'Varrendo' : 'Aguardando';
+            view.status.style.color = payload.isChecking ? 'var(--accent)' : 'var(--text-secondary)';
+            view.triangles.textContent = payload.monitoredTriangles || 0;
+
+            if (payload.logs && Array.isArray(payload.logs)) {
+                view.logs.textContent = payload.logs.join('\n');
+                view.logs.scrollTop = view.logs.scrollHeight;
+            }
+        }
+
+        execGrid.addEventListener('click', async (e) => {
+            const btn = e.target.closest('button[data-role]');
+            if (!btn) return;
+
+            const strategyId = btn.dataset.id;
+            const role = btn.dataset.role;
+
+            if (role === 'exec-toggle') {
+                btn.disabled = true;
+                const isRunning = activeSockets.has(strategyId);
+                const view = executionViews.get(strategyId);
+                
+                try {
+                    if (isRunning) {
+                        // Parar loop
+                        await fetchJson(buildApiUrl(`arbitrage/strategies/${strategyId}/stop`), { method: 'POST' });
+                        stopListening(strategyId);
+                        showToast('Varredura interrompida com sucesso!', 'success');
+                    } else {
+                        // Iniciar loop
+                        await fetchJson(buildApiUrl(`arbitrage/strategies/${strategyId}/start`), { method: 'POST' });
+                        startListening(strategyId);
+                        showToast('Varredura em segundo plano iniciada!', 'success');
+                    }
+                } catch (err) {
+                    showToast(err.message, 'error');
+                } finally {
+                    btn.disabled = false;
+                }
+            }
+        });
+
+        listenAllButton.addEventListener('click', async () => {
+            const count = getSubscribedCount();
+            const allSubscribed = strategies.length > 0 && count === strategies.length;
+            listenAllButton.disabled = true;
+
+            try {
+                if (allSubscribed) {
+                    for (const st of strategies) {
+                        await fetchJson(buildApiUrl(`arbitrage/strategies/${st._id}/stop`), { method: 'POST' });
+                        stopListening(st._id);
+                    }
+                } else {
+                    for (const st of strategies) {
+                        await fetchJson(buildApiUrl(`arbitrage/strategies/${st._id}/start`), { method: 'POST' });
+                        startListening(st._id);
+                    }
+                }
+            } catch (err) {
+                showToast(err.message, 'error');
+            } finally {
+                listenAllButton.disabled = false;
+            }
+        });
+
+        refreshButton.addEventListener('click', () => {
+            loadStrategies();
+        });
+
+        // Init
+        loadStrategies();
+    </script>
+</body>
+</html>

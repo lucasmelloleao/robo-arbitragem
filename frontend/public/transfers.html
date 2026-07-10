@@ -583,8 +583,8 @@
                         <td><strong>${escapeHtml(exchangeName)}</strong></td>
                         <td class="mono">
                             <span style="display: inline-flex; align-items: center; gap: 6px; vertical-align: middle;">
-                                <img src="https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/${item.currency.toLowerCase()}.png" 
-                                     onerror="this.style.display='none'" 
+                                <img src="https://assets.coincap.io/assets/icons/${item.currency.toLowerCase()}@2x.png" 
+                                     onerror="this.onerror=null; this.src='https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/${item.currency.toLowerCase()}.png'; this.addEventListener('error', () => { this.style.display='none'; })" 
                                      alt="" 
                                      style="width: 16px; height: 16px; border-radius: 50%; object-fit: contain;" />
                                 <strong>${escapeHtml(item.currency)}</strong>
@@ -922,8 +922,8 @@
                         <td><strong>${escapeHtml(originName)}</strong> &rarr; <strong>${escapeHtml(targetName)}</strong></td>
                         <td class="mono" style="font-size: 0.8rem;">
                             <span style="display: inline-flex; align-items: center; gap: 6px; vertical-align: middle;">
-                                <img src="https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/${item.currency.toLowerCase()}.png" 
-                                     onerror="this.style.display='none'" 
+                                <img src="https://assets.coincap.io/assets/icons/${item.currency.toLowerCase()}@2x.png" 
+                                     onerror="this.onerror=null; this.src='https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/${item.currency.toLowerCase()}.png'; this.addEventListener('error', () => { this.style.display='none'; })" 
                                      alt="" 
                                      style="width: 16px; height: 16px; border-radius: 50%; object-fit: contain;" />
                                 ${escapeHtml(item.currency)} <small class="text-secondary">(${escapeHtml(item.network)})</small>

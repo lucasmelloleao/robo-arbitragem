@@ -771,6 +771,10 @@ async function executeScan(strategy) {
         }
     } finally {
         activeScans.delete(strategyId);
+        
+        // Sempre depois de executar uma estratégia, atualiza a busca dos balanços para manter o cache atualizado
+        updateBalanceCache(strategy.exchange1).catch(function () {});
+        updateBalanceCache(strategy.exchange2).catch(function () {});
     }
 
     return result;
@@ -919,14 +923,16 @@ function getStatus() {
         runningScans: scanIntervals.size,
         opportunities: 0,
         strategies: cachedStrategies.map(function (s) {
+            var sid = String(s._id);
             return {
-                id: s._id,
+                id: sid,
                 name: s.name,
                 exchange1: s.exchange1,
                 exchange2: s.exchange2,
                 asset1: s.asset1,
                 asset2: s.asset2,
-                interval: s.scanIntervalMs || 5000
+                interval: s.scanIntervalMs || 5000,
+                isRunning: scanIntervals.has(sid)
             };
         })
     };

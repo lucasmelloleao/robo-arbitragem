@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Estratégias de Arbitragem - ArbTrade</title>
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+        /* Modal Styles */
+        #strategy-form-container {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            z-index: 10000;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+        }
+        #strategy-form-container:not([hidden]) {
+            display: flex !important;
+        }
+        #strategy-form {
+            background: #0b1420;
+            border: 1px solid var(--border-primary);
+            border-radius: var(--radius-xl);
+            width: 100%;
+            max-width: 750px;
+            max-height: 90vh;
+            overflow-y: auto;
+            padding: var(--space-7);
+            box-shadow: var(--shadow-lg);
+            animation: modalSlide 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        @keyframes modalSlide {
+            from { opacity: 0; transform: translateY(-30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .config-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+        .config-grid .form-group {
+            margin: 0;
+        }
+        .config-grid .form-group-wide {
+            grid-column: 1 / -1;
+        }
+        @media (max-width: 768px) {
+            .config-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main class="main-content" role="main">
+        <div class="shell">
+            <section class="hero">
+                <div class="hero-top">
+                    <div>
+                        <div class="eyebrow">Configurações</div>
+                        <h1>Estratégias de Arbitragem Clássica</h1>
+                    </div>
+                </div>
+                <p>Gerencie suas estratégias de arbitragem triangular. Configure ativos, montantes de investimento, taxas e limites por exchange.</p>
+                <div class="actions">
+                    <button class="primary" id="btn-new-strategy" type="button">Nova Estratégia</button>
+                </div>
+            </section>
+
+            <section class="workspace-section">
+                <div class="section-heading">
+                    <div>
+                        <div class="eyebrow">Estratégias Ativas</div>
+                        <h2>Listagem de Configurações</h2>
+                    </div>
+                </div>
+
+                <div class="grid" id="strategies-list">
+                    <div class="empty">Carregando estratégias...</div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Modal Form -->
+    <div id="strategy-form-container" hidden>
+        <form id="strategy-form" autocomplete="off" novalidate>
+            <div class="form-header">
+                <div>
+                    <h2 id="strategy-form-title">Nova Estratégia de Arbitragem</h2>
+                    <p class="form-hint" id="strategy-form-hint">Configure as propriedades de execução e monitoramento da arbitragem triangular.</p>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="field-name">Nome da Estratégia</label>
+                <input id="field-name" name="name" type="text" placeholder="Ex: Arbitragem USDC na MEXC" required>
+            </div>
+
+            <div class="config-grid">
+                <div class="form-group">
+                    <label for="field-exchange">Exchange</label>
+                    <select id="field-exchange" name="exchange" required>
+                        <option value="">Selecione uma Corretora</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="field-assetsMode">Modo de Varredura de Ativos</label>
+                    <select id="field-assetsMode" name="assetsMode">
+                        <option value="list">Lista customizada (Configurada abaixo)</option>
+                        <option value="all">Sincronizar todos os ativos (Consome mais recursos)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="field-startAssets">Moedas de Início (Start Assets)</label>
+                    <input id="field-startAssets" name="startAssets" type="text" placeholder="USDC, USDT" value="USDC">
+                </div>
+
+                <div class="form-group">
+                    <label for="field-bridgeAssets">Moedas Ponte (Bridge Assets)</label>
+                    <input id="field-bridgeAssets" name="bridgeAssets" type="text" placeholder="BTC, ETH, SOL" value="BTC,ETH,SOL">
+                </div>
+
+                <div class="form-group form-group-wide">
+                    <label for="field-targetAssets">Moedas Alvo (Target Assets)</label>
+                    <input id="field-targetAssets" name="targetAssets" type="text" placeholder="ETH, SOL, XRP, PEPE" value="ETH,SOL,XRP">
+                </div>
+
+                <div class="form-group">
+                    <label for="field-investmentAmount">Valor por Operação (Investment Amount)</label>
+                    <input id="field-investmentAmount" name="investmentAmount" type="number" step="any" value="100">
+                </div>
+
+                <div class="form-group">
+                    <label for="field-tradingFee">Taxa de Negociação Estimada (Trading Fee %)</label>
+                    <input id="field-tradingFee" name="tradingFee" type="number" step="any" value="0.001">
+                </div>
+
+                <div class="form-group">
+                    <label for="field-scanIntervalMs">Intervalo de Varredura (ms)</label>
+                    <input id="field-scanIntervalMs" name="scanIntervalMs" type="number" value="3000">
+                </div>
+
+                <div class="form-group">
+                    <label for="field-maxTrianglesPerCycle">Max Triângulos por Ciclo</label>
+                    <input id="field-maxTrianglesPerCycle" name="maxTrianglesPerCycle" type="number" value="8">
+                </div>
+
+                <div class="form-group">
+                    <label for="field-orderBookDepth">Profundidade do Orderbook (Depth)</label>
+                    <input id="field-orderBookDepth" name="orderBookDepth" type="number" value="10">
+                </div>
+
+                <div class="form-group">
+                    <label for="field-maxSpreadPercent">Spread Máximo Permitido (%)</label>
+                    <input id="field-maxSpreadPercent" name="maxSpreadPercent" type="number" step="any" value="0.2">
+                </div>
+
+                <div class="form-group">
+                    <label for="field-minVolumeBuffer">Multiplicador de Liquidez Mínima (Buffer)</label>
+                    <input id="field-minVolumeBuffer" name="minVolumeBuffer" type="number" step="any" value="1.05">
+                </div>
+
+                <div class="form-group">
+                    <label for="field-minProfitPercent">Lucro Líquido Mínimo Requerido (%)</label>
+                    <input id="field-minProfitPercent" name="minProfitPercent" type="number" step="any" value="0.1">
+                </div>
+
+                <div class="form-group">
+                    <label for="field-maxSlippagePercent">Slippage Máximo Permitido (%)</label>
+                    <input id="field-maxSlippagePercent" name="maxSlippagePercent" type="number" step="any" value="0.15">
+                </div>
+
+                <div class="form-group">
+                    <label for="field-chunkSize">Tamanho de Lote de Varredura (Chunk Size)</label>
+                    <input id="field-chunkSize" name="chunkSize" type="number" value="15">
+                </div>
+
+                <div class="form-group form-group-wide checkbox-group" style="display: flex; align-items: center; gap: 0.5rem; margin: var(--space-4) 0;">
+                    <input id="field-enableLiveTrading" name="enableLiveTrading" type="checkbox">
+                    <label for="field-enableLiveTrading" style="margin: 0;">Executar Ordens Reais na Corretora (Live Trading)</label>
+                </div>
+
+                <div class="form-group form-group-wide">
+                    <label for="field-notes">Observações</label>
+                    <textarea id="field-notes" name="notes" placeholder="Notas sobre a estratégia..." rows="3"></textarea>
+                </div>
+            </div>
+
+            <div class="form-feedback mono form-feedback-block" id="strategy-form-feedback"></div>
+
+            <div class="form-actions" style="margin-top: 1.5rem; display: flex; justify-content: flex-end; gap: var(--space-3);">
+                <button class="secondary" id="strategy-form-cancel" type="button">Cancelar</button>
+                <button class="primary" id="strategy-form-submit" type="submit">Salvar Estratégia</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container"></div>
+
+    <script src="/js/config.js"></script>
+    <script type="module">
+        import { buildApiUrl, escapeHtml, showToast } from './js/shared.js';
+
+        let strategies = [];
+        let editingStrategyId = null;
+
+        const strategiesList = document.getElementById('strategies-list');
+        const formContainer = document.getElementById('strategy-form-container');
+        const form = document.getElementById('strategy-form');
+        const formTitle = document.getElementById('strategy-form-title');
+        const formHint = document.getElementById('strategy-form-hint');
+        const formFeedback = document.getElementById('strategy-form-feedback');
+        const formSubmit = document.getElementById('strategy-form-submit');
+        const formCancel = document.getElementById('strategy-form-cancel');
+        const btnNew = document.getElementById('btn-new-strategy');
+        const selectExchange = document.getElementById('field-exchange');
+
+        async function fetchJson(url, options = {}) {
+            options.headers = options.headers || {};
+            const token = localStorage.getItem('authToken');
+            if (token) {
+                options.headers['Authorization'] = `Bearer ${token}`;
+            }
+            const response = await fetch(url, options);
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                if (response.status === 401) {
+                    localStorage.removeItem('authToken');
+                    window.location.href = '/login.html';
+                    return;
+                }
+                throw new Error(data.error || 'Erro na requisição');
+            }
+            return data;
+        }
+
+        async function loadExchanges() {
+            try {
+                const res = await fetchJson(buildApiUrl('exchanges'));
+                const exchanges = res.exchanges || [];
+                selectExchange.innerHTML = '<option value="">Selecione uma Corretora</option>';
+                exchanges.forEach(ex => {
+                    const opt = document.createElement('option');
+                    opt.value = ex.acronym;
+                    opt.textContent = `${ex.name} (${ex.acronym})`;
+                    selectExchange.appendChild(opt);
+                });
+            } catch (err) {
+                showToast(`Erro ao carregar corretoras: ${err.message}`, 'error');
+            }
+        }
+
+        async function loadStrategies() {
+            try {
+                const res = await fetchJson(buildApiUrl('arbitrage/strategies'));
+                strategies = res.strategies || [];
+                renderStrategies();
+            } catch (err) {
+                strategiesList.innerHTML = `<div class="empty">Erro ao carregar estratégias: ${escapeHtml(err.message)}</div>`;
+            }
+        }
+
+        function renderStrategies() {
+            if (strategies.length === 0) {
+                strategiesList.innerHTML = '<div class="empty">Nenhuma estratégia de arbitragem configurada ainda.</div>';
+                return;
+            }
+
+            strategiesList.innerHTML = strategies.map(strategy => `
+                <article class="entity-card" data-id="${escapeHtml(strategy._id)}">
+                    <div class="entity-card-top" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--space-3);">
+                        <div>
+                            <h3 class="entity-title" style="margin: 0; font-size: 1.15rem;">${escapeHtml(strategy.name)}</h3>
+                            <div class="entity-subtitle" style="font-size: 0.82rem; color: var(--text-secondary); margin-top: 4px;">Exchange: <strong>${escapeHtml(strategy.exchange)}</strong></div>
+                        </div>
+                        <span class="badge ${strategy.active ? 'badge-active' : 'badge-inactive'}">${strategy.active ? 'Ativa' : 'Inativa'}</span>
+                    </div>
+
+                    <div style="font-size: 0.88rem; color: var(--text-secondary); display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: var(--space-4);">
+                        <div>Ativo Inicial: <strong>${escapeHtml(strategy.startAssets)}</strong></div>
+                        <div>Investimento: <strong>${escapeHtml(String(strategy.investmentAmount))} USD</strong></div>
+                        <div>Modo Ativos: <strong>${escapeHtml(strategy.assetsMode === 'all' ? 'Todos' : 'Custom')}</strong></div>
+                        <div>Negociação: <strong>${strategy.enableLiveTrading ? '<span style="color: var(--danger)">REAL</span>' : 'Simulação'}</strong></div>
+                    </div>
+
+                    <div class="entity-card-bottom" style="border-top: 1px solid var(--border-subtle); padding-top: var(--space-3); display: flex; justify-content: flex-end;">
+                        <div class="entity-actions" style="display: flex; gap: 8px;">
+                            <button class="secondary" data-action="edit" data-id="${escapeHtml(strategy._id)}">Editar</button>
+                            <button class="secondary" data-action="toggle" data-id="${escapeHtml(strategy._id)}">${strategy.active ? 'Desativar' : 'Ativar'}</button>
+                            <button class="secondary button-danger" data-action="delete" data-id="${escapeHtml(strategy._id)}">Excluir</button>
+                        </div>
+                    </div>
+                </article>
+            `).join('');
+        }
+
+        function showForm(strategy = null) {
+            form.reset();
+            formFeedback.textContent = '';
+            formFeedback.classList.remove('success');
+
+            if (strategy) {
+                editingStrategyId = strategy._id;
+                formTitle.textContent = 'Editar Estratégia';
+                formSubmit.textContent = 'Salvar Alterações';
+
+                form.elements.name.value = strategy.name || '';
+                form.elements.exchange.value = strategy.exchange || '';
+                form.elements.assetsMode.value = strategy.assetsMode || 'list';
+                form.elements.startAssets.value = strategy.startAssets || '';
+                form.elements.bridgeAssets.value = strategy.bridgeAssets || '';
+                form.elements.targetAssets.value = strategy.targetAssets || '';
+                form.elements.investmentAmount.value = strategy.investmentAmount ?? 100;
+                form.elements.tradingFee.value = strategy.tradingFee ?? 0.001;
+                form.elements.scanIntervalMs.value = strategy.scanIntervalMs ?? 3000;
+                form.elements.maxTrianglesPerCycle.value = strategy.maxTrianglesPerCycle ?? 8;
+                form.elements.orderBookDepth.value = strategy.orderBookDepth ?? 10;
+                form.elements.maxSpreadPercent.value = strategy.maxSpreadPercent ?? 0.2;
+                form.elements.minVolumeBuffer.value = strategy.minVolumeBuffer ?? 1.05;
+                form.elements.minProfitPercent.value = strategy.minProfitPercent ?? 0.1;
+                form.elements.maxSlippagePercent.value = strategy.maxSlippagePercent ?? 0.15;
+                form.elements.chunkSize.value = strategy.chunkSize ?? 15;
+                form.elements.enableLiveTrading.checked = Boolean(strategy.enableLiveTrading);
+                form.elements.notes.value = strategy.notes || '';
+            } else {
+                editingStrategyId = null;
+                formTitle.textContent = 'Nova Estratégia de Arbitragem';
+                formSubmit.textContent = 'Criar Estratégia';
+            }
+
+            formContainer.hidden = false;
+        }
+
+        function hideForm() {
+            formContainer.hidden = true;
+            editingStrategyId = null;
+            form.reset();
+        }
+
+        btnNew.addEventListener('click', () => showForm());
+        formCancel.addEventListener('click', hideForm);
+
+        formContainer.addEventListener('click', (e) => {
+            if (e.target === formContainer) {
+                hideForm();
+            }
+        });
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            formSubmit.disabled = true;
+            formFeedback.textContent = 'Processando...';
+
+            const payload = {
+                name: form.elements.name.value.trim(),
+                exchange: form.elements.exchange.value,
+                assetsMode: form.elements.assetsMode.value,
+                startAssets: form.elements.startAssets.value.trim(),
+                bridgeAssets: form.elements.bridgeAssets.value.trim(),
+                targetAssets: form.elements.targetAssets.value.trim(),
+                investmentAmount: Number(form.elements.investmentAmount.value),
+                tradingFee: Number(form.elements.tradingFee.value),
+                scanIntervalMs: Number(form.elements.scanIntervalMs.value),
+                maxTrianglesPerCycle: Number(form.elements.maxTrianglesPerCycle.value),
+                orderBookDepth: Number(form.elements.orderBookDepth.value),
+                maxSpreadPercent: Number(form.elements.maxSpreadPercent.value),
+                minVolumeBuffer: Number(form.elements.minVolumeBuffer.value),
+                minProfitPercent: Number(form.elements.minProfitPercent.value),
+                maxSlippagePercent: Number(form.elements.maxSlippagePercent.value),
+                chunkSize: Number(form.elements.chunkSize.value),
+                enableLiveTrading: form.elements.enableLiveTrading.checked,
+                notes: form.elements.notes.value.trim()
+            };
+
+            try {
+                const url = editingStrategyId 
+                    ? buildApiUrl(`arbitrage/strategies/${editingStrategyId}`)
+                    : buildApiUrl('arbitrage/strategies');
+                
+                await fetchJson(url, {
+                    method: editingStrategyId ? 'PUT' : 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                showToast(editingStrategyId ? 'Estratégia atualizada com sucesso!' : 'Estratégia criada com sucesso!', 'success');
+                hideForm();
+                await loadStrategies();
+            } catch (err) {
+                formFeedback.textContent = err.message;
+            } finally {
+                formSubmit.disabled = false;
+            }
+        });
+
+        strategiesList.addEventListener('click', async (e) => {
+            const btn = e.target.closest('button[data-action]');
+            if (!btn) return;
+            
+            const action = btn.dataset.action;
+            const id = btn.dataset.id;
+            const strategy = strategies.find(s => s._id === id);
+
+            if (action === 'edit' && strategy) {
+                showForm(strategy);
+            } else if (action === 'toggle' && strategy) {
+                btn.disabled = true;
+                try {
+                    await fetchJson(buildApiUrl(`arbitrage/strategies/${id}/toggle`), { method: 'PATCH' });
+                    showToast('Status da estratégia alterado com sucesso!', 'success');
+                    await loadStrategies();
+                } catch (err) {
+                    showToast(err.message, 'error');
+                } finally {
+                    btn.disabled = false;
+                }
+            } else if (action === 'delete' && strategy) {
+                if (!confirm(`Deseja realmente excluir a estratégia "${strategy.name}"?`)) return;
+                btn.disabled = true;
+                try {
+                    await fetchJson(buildApiUrl(`arbitrage/strategies/${id}`), { method: 'DELETE' });
+                    showToast('Estratégia excluída com sucesso!', 'success');
+                    await loadStrategies();
+                } catch (err) {
+                    showToast(err.message, 'error');
+                } finally {
+                    btn.disabled = false;
+                }
+            }
+        });
+
+        // Init
+        await loadExchanges();
+        await loadStrategies();
+    </script>
+</body>
+</html>

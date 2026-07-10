@@ -273,8 +273,24 @@
 
         // ===== API Helper =====
         function apiUrl(path) {
-            var base = window.API_URL || '';
-            return base ? base + '/api/' + path : '/api/' + path;
+            var base = window.API_URL || 'http://localhost:8081';
+            var normalized = path.replace(/^\//, '');
+            var port = '8081';
+            if (normalized.indexOf('cross-market') === 0) {
+                port = '8082';
+            } else if (normalized.indexOf('market-making') === 0) {
+                port = '8083';
+            }
+            
+            try {
+                var urlObj = new URL(base);
+                urlObj.port = port;
+                base = urlObj.origin;
+            } catch (e) {
+                base = base.replace(/:8081$/, ':' + port);
+            }
+            
+            return base + '/api/' + normalized;
         }
 
         async function apiFetch(path, options) {
@@ -383,11 +399,7 @@
                     return;
                 }
 
-                if (data.exchange1 === data.exchange2) {
-                    formFeedback.textContent = 'As corretoras 1 e 2 devem ser diferentes.';
-                    formFeedback.className = 'mono form-feedback';
-                    return;
-                }
+                // Mesma corretora permitida por solicitação do usuário
 
                 formFeedback.textContent = 'Salvando...';
                 formFeedback.className = 'mono form-feedback';

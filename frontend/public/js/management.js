@@ -134,7 +134,6 @@ export function initManagementPage() {
                 }
             }
 
-            populateConfig('arbitrageConfig', exchange.arbitrageConfig);
             populateConfig('marketMakingConfig', exchange.marketMakingConfig);
             updateExchangePasswordField(exchange.acronym);
         } else {
@@ -292,45 +291,20 @@ export function initManagementPage() {
         }
 
         exchangeList.innerHTML = exchanges.map((exchange) => {
-            const credentialSummary = [
-                `API ${escapeHtml(exchange.apiKeyMasked || 'não configurada')}`,
-                `Secret ${exchange.hasSecretKey ? 'configurada' : 'não configurada'}`
-            ];
-
-            const envInfoMarkup = Array.isArray(exchange.envInfoSections) && exchange.envInfoSections.length > 0
-                ? `
-                    <div class="entity-note entity-note-env">
-                        <strong>Info do .env</strong>
-                        ${renderEnvInfoSections(exchange.envInfoSections)}
-                    </div>
-                `
-                : '';
-
-            if (exchangeUsesPassphrase(exchange.acronym)) {
-                credentialSummary.push(`Passphrase ${exchange.hasPassword ? 'configurada' : 'não configurada'}`);
-            }
-
             return `
-            <article class="entity-card" data-exchange-id="${escapeHtml(exchange._id)}">
-                <div class="entity-card-top">
+            <article class="entity-card" data-exchange-id="${escapeHtml(exchange._id)}" style="display: flex; flex-direction: column; justify-content: space-between;">
+                <div class="entity-card-top" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0;">
                     <div>
-                        <h3 class="entity-title">${escapeHtml(exchange.name)}</h3>
-                        <div class="entity-subtitle">${escapeHtml(exchange.acronym)}${exchange.envInfo ? ' · sincronizada do .env' : ''}</div>
+                        <h3 class="entity-title" style="margin: 0; font-size: 1.15rem; color: var(--text-primary);">${escapeHtml(exchange.name)}</h3>
+                        <div class="entity-subtitle" style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">${escapeHtml(exchange.acronym)}</div>
                     </div>
-                    <span class="badge ${exchange.active ? 'badge-active' : 'badge-inactive'}">${exchange.active ? 'Ativa' : 'Inativa'}</span>
+                    <span class="badge ${exchange.active ? 'badge-active' : 'badge-inactive'}" style="padding: 4px 10px; border-radius: var(--radius-sm); font-size: 0.75rem; font-weight: bold;">${exchange.active ? 'Ativa' : 'Inativa'}</span>
                 </div>
-                <div class="entity-card-meta">
-                    <div class="entity-credentials">${credentialSummary.join(' · ')}</div>
-                    <div class="entity-meta">Atualizada em ${formatDateTime(exchange.updatedAt || exchange.created_at)}</div>
-                </div>
-                <div class="entity-note">${escapeHtml(exchange.notes || 'Sem observações cadastradas.')}</div>
-                ${envInfoMarkup}
-                <div class="entity-card-bottom">
-                    <div class="entity-meta">ID ${escapeHtml(exchange._id)}</div>
-                    <div class="entity-actions">
-                        <button class="secondary" data-action="edit-exchange" data-id="${escapeHtml(exchange._id)}">Editar</button>
-                        <button class="secondary" data-action="toggle-exchange" data-id="${escapeHtml(exchange._id)}">${exchange.active ? 'Desativar' : 'Ativar'}</button>
-                        <button class="secondary button-danger" data-action="delete-exchange" data-id="${escapeHtml(exchange._id)}">Excluir</button>
+                <div class="entity-card-bottom" style="margin-top: 15px; border-top: 1px solid var(--border-subtle); padding-top: 12px; display: flex; justify-content: flex-end;">
+                    <div class="entity-actions" style="display: flex; gap: 8px;">
+                        <button class="secondary" data-action="edit-exchange" data-id="${escapeHtml(exchange._id)}" style="padding: 6px 12px; font-size: 0.8rem;">Editar</button>
+                        <button class="secondary" data-action="toggle-exchange" data-id="${escapeHtml(exchange._id)}" style="padding: 6px 12px; font-size: 0.8rem;">${exchange.active ? 'Desativar' : 'Ativar'}</button>
+                        <button class="secondary button-danger" data-action="delete-exchange" data-id="${escapeHtml(exchange._id)}" style="padding: 6px 12px; font-size: 0.8rem;">Excluir</button>
                     </div>
                 </div>
             </article>
@@ -583,6 +557,14 @@ export function initManagementPage() {
 
     if (btnCancelExchangeForm) {
         btnCancelExchangeForm.addEventListener('click', hideExchangeForm);
+    }
+
+    if (exchangeFormContainer) {
+        exchangeFormContainer.addEventListener('click', (event) => {
+            if (event.target === exchangeFormContainer) {
+                hideExchangeForm();
+            }
+        });
     }
 
     if (exchangeForm) {

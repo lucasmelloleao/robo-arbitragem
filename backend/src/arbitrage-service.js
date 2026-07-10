@@ -1,7 +1,7 @@
 const ccxt = require('ccxt');
 const fs = require('fs/promises');
 const path = require('path');
-const { getExchangeCredentialsByAcronym } = require('./database');
+const { getExchangeCredentialsByAcronym, createArbitrageTrade } = require('./database');
 const {
     getCredentialRequirementLabel,
     getExchangeCredentialConfig,
@@ -181,13 +181,33 @@ async function createExchange(exchangeId, config) {
     throw new Error(`Exchange inválida: ${normalizedExchangeId}. Use "binance", "kraken", "bybit", "mexc", "coinbase", "gateio", "okx" ou "woo".`);
 }
 
-async function createArbitrageService(exchangeId) {
+async function createArbitrageService(strategyConfig) {
     const rootDir = path.join(__dirname, '..', '..');
-    const configuredExchangeId = normalizeExchangeId(exchangeId);
+    const configuredExchangeId = normalizeExchangeId(strategyConfig.exchange);
 
-    const config = await resolveArbitrageConfig(configuredExchangeId);
+    const config = {
+        _id: strategyConfig._id,
+        name: strategyConfig.name,
+        exchange: configuredExchangeId,
+        startAssets: String(strategyConfig.startAssets || 'USDC').split(',').map(s => s.trim().toUpperCase()),
+        bridgeAssets: String(strategyConfig.bridgeAssets || '').split(',').map(s => s.trim().toUpperCase()),
+        targetAssets: String(strategyConfig.targetAssets || '').split(',').map(s => s.trim().toUpperCase()),
+        investmentAmount: Number(strategyConfig.investmentAmount ?? 100),
+        tradingFee: Number(strategyConfig.tradingFee ?? 0.001),
+        scanIntervalMs: Number(strategyConfig.scanIntervalMs ?? 3000),
+        maxTrianglesPerCycle: Number(strategyConfig.maxTrianglesPerCycle ?? 8),
+        orderBookDepth: Number(strategyConfig.orderBookDepth ?? 10),
+        maxSpreadPercent: Number(strategyConfig.maxSpreadPercent ?? 0.2),
+        minVolumeBuffer: Number(strategyConfig.minVolumeBuffer ?? 1.05),
+        minProfitPercent: Number(strategyConfig.minProfitPercent ?? 0.1),
+        maxSlippagePercent: Number(strategyConfig.maxSlippagePercent ?? 0.15),
+        enableLiveTrading: Boolean(strategyConfig.enableLiveTrading ?? false),
+        assetsMode: strategyConfig.assetsMode || 'list',
+        chunkSize: Number(strategyConfig.chunkSize ?? 15)
+    };
+
     const exchange = await createExchange(configuredExchangeId, config);
-    config.opportunityLogFile = path.join(rootDir, 'logs', `arbitrage-opportunities-${configuredExchangeId}.jsonl`);
+    config.opportunityLogFile = path.join(rootDir, 'logs', `arbitrage-opportunities-${strategyConfig._id || configuredExchangeId}.jsonl`);
 
     if (config.enableLiveTrading) {
         await assertLiveTradingCredentials(configuredExchangeId);
@@ -507,63 +527,98 @@ async function createArbitrageService(exchangeId) {
     async function executeTrade(result) {
         const { triangle, amountBridge, amountTarget } = result;
 
-        validateExecutionPlan(result);
-        await validateBalances(triangle);
+        let order1 = null;
+        let order2 = null;
+        let order3 = null;
 
-        // ─── PERNA 1: Comprar bridgeAsset com startAsset ───────────────────────
-        const order1 = await exchange.createMarketBuyOrder(triangle.pair1, amountBridge);
-        await assertOrderFilled(order1, triangle.pair1);
+        try {
+            validateExecutionPlan(result);
+            await validateBalances(triangle);
 
-        // ─── PERNA 2: Comprar targetAsset com bridgeAsset ──────────────────────
-        const order2 = await exchange.createMarketBuyOrder(triangle.pair2, amountTarget);
-        await assertOrderFilled(order2, triangle.pair2);
+            // ─── PERNA 1: Comprar bridgeAsset com startAsset ───────────────────────
+            order1 = await exchange.createMarketBuyOrder(triangle.pair1, amountBridge);
+            await assertOrderFilled(order1, triangle.pair1);
 
-        // ─── PERNA 3: Vender targetAsset para recuperar startAsset ────────────
-        // CRÍTICO: Não usar o valor teórico (amountTarget)!
-        // A exchange pode ter executado uma quantidade ligeiramente diferente
-        // na perna 2 (ex: pediu 4.05, executou 4.04) devido a:
-        //   - Arredondamento de Lot Size (step size)
-        //   - Taxas de trading embutidas no preenchimento
-        //   - Profundidade insuficiente no book
-        //
-        // Se tentarmos vender o valor teórico (4.05) mas só temos 4.04,
-        // a MEXC retorna erro "Oversold" (code 30005).
-        //
-        // SOLUÇÃO: Buscar o saldo REAL do targetAsset na carteira após a perna 2
-        // e usar esse valor exato na ordem de venda.
-        const balanceAfterPerna2 = await exchange.fetchBalance();
-        const realTargetBalance = balanceAfterPerna2?.free?.[triangle.targetAsset] ?? 0;
+            // ─── PERNA 2: Comprar targetAsset com bridgeAsset ──────────────────────
+            order2 = await exchange.createMarketBuyOrder(triangle.pair2, amountTarget);
+            await assertOrderFilled(order2, triangle.pair2);
 
-        if (realTargetBalance <= 0) {
-            throw new Error(
-                `Saldo zero de ${triangle.targetAsset} apos perna 2. `
-                + `Nao e possivel executar a perna 3 (venda). `
-                + `Teorico: ${amountTarget}, Real: ${realTargetBalance}`
-            );
-        }
+            // ─── PERNA 3: Vender targetAsset para recuperar startAsset ────────────
+            const balanceAfterPerna2 = await exchange.fetchBalance();
+            const realTargetBalance = balanceAfterPerna2?.free?.[triangle.targetAsset] ?? 0;
 
-        // Usa o saldo real, respeitando a precisão do mercado
-        const sellAmount = Number(exchange.amountToPrecision(triangle.pair3, realTargetBalance));
+            if (realTargetBalance <= 0) {
+                throw new Error(
+                    `Saldo zero de ${triangle.targetAsset} apos perna 2. `
+                    + `Nao e possivel executar a perna 3 (venda). `
+                    + `Teorico: ${amountTarget}, Real: ${realTargetBalance}`
+                );
+            }
 
-        if (sellAmount <= 0) {
-            throw new Error(
-                `Quantidade de venda invalida apos arredondamento para ${triangle.pair3}. `
-                + `Saldo real: ${realTargetBalance}, arredondado: ${sellAmount}`
-            );
-        }
+            const sellAmount = Number(exchange.amountToPrecision(triangle.pair3, realTargetBalance));
 
-        if (sellAmount < amountTarget) {
-            console.warn(`[arbitrage] Ajustando quantidade da perna 3 por diferenca de execucao:`, {
-                pair: triangle.pair3,
-                teorico: amountTarget,
-                saldoReal: realTargetBalance,
-                sellAmount,
-                diferenca: amountTarget - sellAmount
+            if (sellAmount <= 0) {
+                throw new Error(
+                    `Quantidade de venda invalida apos arredondamento para ${triangle.pair3}. `
+                    + `Saldo real: ${realTargetBalance}, arredondado: ${sellAmount}`
+                );
+            }
+
+            if (sellAmount < amountTarget) {
+                console.warn(`[arbitrage] Ajustando quantidade da perna 3 por diferenca de execucao:`, {
+                    pair: triangle.pair3,
+                    teorico: amountTarget,
+                    saldoReal: realTargetBalance,
+                    sellAmount,
+                    diferenca: amountTarget - sellAmount
+                });
+            }
+
+            order3 = await exchange.createMarketSellOrder(triangle.pair3, sellAmount);
+            await assertOrderFilled(order3, triangle.pair3);
+
+            // Grava no banco como SUCESSO
+            await createArbitrageTrade({
+                exchange: configuredExchangeId.toUpperCase(),
+                route: triangle.label,
+                investmentAmount: config.investmentAmount,
+                profitPercent: result.percentage,
+                profitLoss: result.profitLoss,
+                finalAmount: result.finalAmount,
+                status: 'SUCCESS',
+                pairs: [triangle.pair1, triangle.pair2, triangle.pair3],
+                orders: { order1, order2, order3 }
+            }).catch((dbErr) => {
+                console.error('[arbitrage] Erro ao salvar trade de arbitragem no banco de dados:', dbErr.message);
             });
-        }
 
-        const order3 = await exchange.createMarketSellOrder(triangle.pair3, sellAmount);
-        await assertOrderFilled(order3, triangle.pair3);
+        } catch (error) {
+            console.error(`[arbitrage] Falha durante execucao do trade LIVE: ${error.message}`);
+
+            let status = 'FAILED';
+            if (order1 && order2) {
+                status = 'PARTIAL_FAILURE';
+            } else if (order1) {
+                status = 'PARTIAL_FAILURE';
+            }
+
+            await createArbitrageTrade({
+                exchange: configuredExchangeId.toUpperCase(),
+                route: triangle.label,
+                investmentAmount: config.investmentAmount,
+                profitPercent: result.percentage,
+                profitLoss: result.profitLoss,
+                finalAmount: result.finalAmount,
+                status: status,
+                errorMessage: error.message,
+                pairs: [triangle.pair1, triangle.pair2, triangle.pair3],
+                orders: { order1, order2, order3 }
+            }).catch((dbErr) => {
+                console.error('[arbitrage] Erro ao salvar trade de arbitragem falhado no banco de dados:', dbErr.message);
+            });
+
+            throw error;
+        }
     }
 
     function createEvaluation(triangle) {
@@ -873,7 +928,7 @@ async function createArbitrageService(exchangeId) {
 
             results.sort((left, right) => right.percentage - left.percentage);
             const opportunities = results.filter((result) => result.percentage >= config.minProfitPercent);
-            console.log(`${loggedAt}  Pares: ${allModeChunkCursor}/${allModeTargetChunks.length}  Triângulos: ${selectedTriangles.length}, oportunidades: ${opportunities.length}, descartados (spread: ${skippedBySpread}, volume: ${skippedByVolume}, oversold: ${skippedByOversold}).`);
+            console.log(`[arbitrage] [${config.name || configuredExchangeId}] [${loggedAt}] Pares: ${allModeChunkCursor}/${allModeTargetChunks.length}  Triângulos: ${selectedTriangles.length}, oportunidades: ${opportunities.length}, descartados (spread: ${skippedBySpread}, volume: ${skippedByVolume}, oversold: ${skippedByOversold}).`);
             if (opportunities.length > 0) {
                 await appendOpportunityLog({
                     timestamp: loggedAt,

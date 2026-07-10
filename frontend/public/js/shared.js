@@ -203,9 +203,31 @@ export function formatEstimatedOutcome(outcome, currency = 'quote') {
 }
 
 export function buildApiUrl(pathname) {
-    const baseUrl = window.API_URL || '';
     const normalized = pathname.replace(/^\//, '');
-    return baseUrl ? baseUrl + '/api/' + normalized : '/api/' + normalized;
+    let port = '8081'; // Porta padrão (arbitrage/admin)
+
+    if (normalized.startsWith('cross-market')) {
+        port = '8082';
+    } else if (normalized.startsWith('market-making')) {
+        port = '8083';
+    }
+
+    let hostname = 'localhost';
+    if (typeof window !== 'undefined') {
+        if (window.API_URL) {
+            try {
+                const urlObj = new URL(window.API_URL);
+                hostname = urlObj.hostname;
+            } catch (e) {
+                hostname = window.location.hostname || 'localhost';
+            }
+        } else {
+            hostname = window.location.hostname || 'localhost';
+        }
+    }
+
+    const baseUrl = 'http://' + hostname + ':' + port;
+    return baseUrl + '/api/' + normalized;
 }
 
 /**

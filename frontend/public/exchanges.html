@@ -42,6 +42,41 @@
                 grid-template-columns: 1fr;
             }
         }
+
+        /* Modal Styles */
+        #exchange-form-container {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            z-index: 10000;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+        }
+        #exchange-form-container:not([hidden]) {
+            display: flex !important;
+        }
+        #exchange-form {
+            background: #0b1420;
+            border: 1px solid var(--border-primary);
+            border-radius: var(--radius-xl);
+            width: 100%;
+            max-width: 750px;
+            max-height: 90vh;
+            overflow-y: auto;
+            padding: var(--space-7);
+            box-shadow: var(--shadow-lg);
+            animation: modalSlide 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        @keyframes modalSlide {
+            from { opacity: 0; transform: translateY(-30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
     </style>
 </head>
 <body>
@@ -112,72 +147,6 @@
                                 <input type="password" id="exchange-password" name="password" placeholder="Opcional para exchanges como OKX" autocomplete="off">
                             </div>
                             
-                            <!-- Configuração de Arbitrage -->
-                            <details class="config-section">
-                                <summary>⚡ Configuração de Arbitrage</summary>
-                                <div class="config-grid">
-                                    <div class="form-group">
-                                        <label for="arb-start-assets">Start Assets</label>
-                                        <input type="text" id="arb-start-assets" name="arbitrageConfig.startAssets" placeholder="Ex: USDT,USDC">
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="arb-bridge-assets">Bridge Assets</label>
-                                        <input type="text" id="arb-bridge-assets" name="arbitrageConfig.bridgeAssets" placeholder="Ex: BTC,ETH,SOL">
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="arb-target-assets">Target Assets</label>
-                                        <input type="text" id="arb-target-assets" name="arbitrageConfig.targetAssets" placeholder="Ex: ETH,SOL,XRP">
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="arb-investment">Investment Amount</label>
-                                        <input type="number" id="arb-investment" name="arbitrageConfig.investmentAmount" step="any" placeholder="100">
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="arb-trading-fee">Trading Fee</label>
-                                        <input type="number" id="arb-trading-fee" name="arbitrageConfig.tradingFee" step="0.0001" placeholder="0.001">
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="arb-scan-interval">Scan Interval (ms)</label>
-                                        <input type="number" id="arb-scan-interval" name="arbitrageConfig.scanIntervalMs" placeholder="3000">
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="arb-max-triangles">Max Triangles</label>
-                                        <input type="number" id="arb-max-triangles" name="arbitrageConfig.maxTrianglesPerCycle" placeholder="8">
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="arb-orderbook-depth">OrderBook Depth</label>
-                                        <input type="number" id="arb-orderbook-depth" name="arbitrageConfig.orderBookDepth" placeholder="10">
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="arb-max-spread">Max Spread %</label>
-                                        <input type="number" id="arb-max-spread" name="arbitrageConfig.maxSpreadPercent" step="0.01" placeholder="0.2">
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="arb-min-volume">Min Volume Buffer</label>
-                                        <input type="number" id="arb-min-volume" name="arbitrageConfig.minVolumeBuffer" step="0.01" placeholder="1.05">
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="arb-min-profit">Min Profit %</label>
-                                        <input type="number" id="arb-min-profit" name="arbitrageConfig.minProfitPercent" step="0.01" placeholder="0.1">
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="arb-max-slippage">Max Slippage %</label>
-                                        <input type="number" id="arb-max-slippage" name="arbitrageConfig.maxSlippagePercent" step="0.01" placeholder="0.15">
-                                    </div>
-                                    <div class="form-group form-group-wide">
-                                        <label class="toggle-field" for="arb-enable-live">
-                                            <input type="checkbox" id="arb-enable-live" name="arbitrageConfig.enableLiveTrading">
-                                            <span>Live Trading</span>
-                                        </label>
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="arb-chunk-size">Tamanho do Lote (Modo "All")</label>
-                                        <input type="number" id="arb-chunk-size" name="arbitrageConfig.chunkSize" placeholder="15" min="1" step="1">
-                                        <small>Número de pares a serem processados por ciclo no modo de arbitragem "all".</small>
-                                    </div>
-                                </div>
-                            </details>
-
                             <!-- Configuração de Market Making -->
                             <details class="config-section">
                                 <summary>📈 Configuração de Market Making</summary>

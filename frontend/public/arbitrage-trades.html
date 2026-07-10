@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Histórico de Operações Arbitragem - ArbTrade</title>
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: var(--space-4);
+            margin-bottom: var(--space-6);
+        }
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-card);
+            border-radius: var(--radius-lg);
+            padding: var(--space-4);
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-2);
+        }
+        .stat-value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            font-family: var(--font-mono);
+        }
+        .stat-label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .filter-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: var(--space-4);
+            margin-bottom: var(--space-4);
+        }
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+        }
+        .pagination-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: var(--space-4);
+            border-top: 1px solid var(--border-card);
+            background: rgba(255, 255, 255, 0.01);
+        }
+        .pagination-buttons {
+            display: flex;
+            gap: var(--space-2);
+        }
+        .no-trades {
+            padding: var(--space-8);
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 1rem;
+        }
+        .details-row {
+            background: rgba(0, 0, 0, 0.2);
+        }
+        .details-container {
+            padding: var(--space-4);
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+    </style>
+</head>
+<body>
+    <main class="main-content" role="main">
+        <div class="shell">
+            <section class="hero">
+                <div class="hero-top">
+                    <div>
+                        <div class="eyebrow">Histórico</div>
+                        <h1>Operações Arbitragem Clássica</h1>
+                    </div>
+                    <div class="hero-status-group">
+                        <div class="status-pill status-pill-wide" style="border-color: rgba(125, 249, 193, 0.4); background: rgba(125, 249, 193, 0.05);">
+                            <span class="status-caption" style="color: var(--accent);">Lucro Acumulado</span>
+                            <strong id="total-profit-stats" style="font-family: var(--font-mono); font-size: 1.1rem; color: var(--accent);">$ 0.00</strong>
+                        </div>
+                    </div>
+                </div>
+                <p>Acompanhe os resultados, retornos e status de execução de todas as arbitragens triangulares disparadas no sistema.</p>
+                <div class="actions">
+                    <button class="primary" id="btn-refresh" type="button">Atualizar Histórico</button>
+                </div>
+            </section>
+
+            <!-- Estatísticas -->
+            <section class="stats-grid">
+                <div class="stat-card">
+                    <span class="stat-label">Total Executado</span>
+                    <span class="stat-value" id="stat-total-trades">0</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Sucesso</span>
+                    <span class="stat-value" id="stat-success-trades" style="color: var(--accent);">0</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Falhas Parciais</span>
+                    <span class="stat-value" id="stat-partial-trades" style="color: #f39c12;">0</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Falhas Totais</span>
+                    <span class="stat-value" id="stat-failed-trades" style="color: var(--danger);">0</span>
+                </div>
+            </section>
+
+            <!-- Tabela de Histórico -->
+            <section class="workspace-section">
+                <div class="section-heading">
+                    <div>
+                        <div class="eyebrow">Registros</div>
+                        <h2>Histórico de Operações</h2>
+                    </div>
+                </div>
+
+                <div class="filter-bar">
+                    <div class="filter-group">
+                        <label for="filter-status" style="color: var(--text-secondary); font-size: 0.9rem;">Status:</label>
+                        <select id="filter-status" style="background: var(--bg-card); border: 1px solid var(--border-card); color: var(--text-primary); padding: var(--space-1) var(--space-3); border-radius: var(--radius-md);">
+                            <option value="">Todos</option>
+                            <option value="SUCCESS">Sucesso</option>
+                            <option value="PARTIAL_FAILURE">Falha Parcial</option>
+                            <option value="FAILED">Falha Total</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <span id="showing-range" style="font-size: 0.85rem; color: var(--text-secondary);">Mostrando 0 - 0 de 0</span>
+                    </div>
+                </div>
+
+                <div class="trades-table-container">
+                    <div class="table-responsive">
+                        <table class="trades-table">
+                            <thead>
+                                <tr>
+                                    <th>Data</th>
+                                    <th>Exchange</th>
+                                    <th>Rota Triangular</th>
+                                    <th>Investimento</th>
+                                    <th>Lucro / PnL</th>
+                                    <th>Status</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="trades-list">
+                                <tr>
+                                    <td colspan="7" class="no-trades">Carregando histórico...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="pagination-container">
+                        <span style="font-size: 0.85rem; color: var(--text-secondary);" id="pagination-info">Página 1</span>
+                        <div class="pagination-buttons">
+                            <button id="btn-prev" disabled style="padding: var(--space-1) var(--space-3); background: var(--bg-card); border: 1px solid var(--border-card); color: var(--text-primary); border-radius: var(--radius-md); cursor: pointer;">Anterior</button>
+                            <button id="btn-next" disabled style="padding: var(--space-1) var(--space-3); background: var(--bg-card); border: 1px solid var(--border-card); color: var(--text-primary); border-radius: var(--radius-md); cursor: pointer;">Próximo</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container"></div>
+
+    <script src="/js/config.js"></script>
+    <script type="module">
+        import { buildApiUrl, escapeHtml, formatNumber, formatDateTime } from './js/shared.js';
+
+        let currentPage = 1;
+        const limit = 15;
+        let totalTrades = 0;
+        let currentStatusFilter = '';
+        let expandedTrades = new Set();
+
+        const tradesList = document.getElementById('trades-list');
+        const filterStatus = document.getElementById('filter-status');
+        const btnPrev = document.getElementById('btn-prev');
+        const btnNext = document.getElementById('btn-next');
+        const paginationInfo = document.getElementById('pagination-info');
+        const showingRange = document.getElementById('showing-range');
+        const btnRefresh = document.getElementById('btn-refresh');
+
+        async function fetchJson(url, options = {}) {
+            options.headers = options.headers || {};
+            const token = localStorage.getItem('authToken');
+            if (token) {
+                options.headers['Authorization'] = `Bearer ${token}`;
+            }
+            const response = await fetch(url, options);
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.error || 'Erro na requisição');
+            return data;
+        }
+
+        async function fetchStats() {
+            try {
+                const stats = await fetchJson(buildApiUrl('arbitrage/trades/stats'));
+                document.getElementById('total-profit-stats').textContent = `$ ${formatNumber(stats.totalProfit || 0, 2)}`;
+                document.getElementById('stat-total-trades').textContent = stats.totalTrades || 0;
+                document.getElementById('stat-success-trades').textContent = stats.successCount || 0;
+                document.getElementById('stat-partial-trades').textContent = stats.partialFailureCount || 0;
+                document.getElementById('stat-failed-trades').textContent = stats.failedCount || 0;
+            } catch (err) {
+                console.error('Erro ao buscar estatísticas:', err);
+            }
+        }
+
+        async function loadTrades() {
+            try {
+                tradesList.innerHTML = '<tr><td colspan="7" class="no-trades">Carregando operações...</td></tr>';
+                
+                let url = buildApiUrl(`arbitrage/trades?limit=${limit}&page=${currentPage}`);
+                if (currentStatusFilter) {
+                    url += `&status=${currentStatusFilter}`;
+                }
+
+                const res = await fetchJson(url);
+                const trades = res.trades || [];
+                totalTrades = res.total || 0;
+
+                renderTradesTable(trades);
+                updatePagination();
+            } catch (err) {
+                tradesList.innerHTML = `<tr><td colspan="7" class="no-trades" style="color: var(--danger)">Erro ao carregar histórico: ${escapeHtml(err.message)}</td></tr>`;
+            }
+        }
+
+        function renderTradesTable(trades) {
+            if (trades.length === 0) {
+                tradesList.innerHTML = '<tr><td colspan="7" class="no-trades">Nenhuma operação encontrada para os filtros selecionados.</td></tr>';
+                return;
+            }
+
+            let html = '';
+            trades.forEach(trade => {
+                const profitClass = trade.profitLoss > 0 ? 'positive' : (trade.profitLoss < 0 ? 'negative' : '');
+                const profitSymbol = trade.profitLoss > 0 ? '+' : '';
+                const isExpanded = expandedTrades.has(trade._id);
+                
+                let statusBadge = '';
+                if (trade.status === 'SUCCESS') {
+                    statusBadge = '<span class="badge badge-active">Sucesso</span>';
+                } else if (trade.status === 'PARTIAL_FAILURE') {
+                    statusBadge = '<span class="badge" style="background: #f39c12; color: #fff;">Falha Parcial</span>';
+                } else {
+                    statusBadge = '<span class="badge badge-inactive">Falhou</span>';
+                }
+
+                html += `
+                    <tr data-trade-id="${escapeHtml(trade._id)}">
+                        <td style="font-size: 0.85rem;">${formatDateTime(trade.created_at)}</td>
+                        <td><strong>${escapeHtml(trade.exchange)}</strong></td>
+                        <td class="mono" style="font-size: 0.82rem; color: var(--text-primary);">${escapeHtml(trade.route)}</td>
+                        <td class="mono">${formatNumber(trade.investmentAmount, 2)} USD</td>
+                        <td class="mono ${profitClass}"><strong>${profitSymbol}${formatNumber(trade.profitLoss, 6)} USD</strong> (${profitSymbol}${formatNumber(trade.profitPercent, 4)}%)</td>
+                        <td>${statusBadge}</td>
+                        <td>
+                            <button class="secondary" style="padding: 4px 10px; font-size: 0.75rem;" data-action="toggle-details">
+                                ${isExpanded ? 'Ocultar' : 'Detalhes'}
+                            </button>
+                        </td>
+                    </tr>
+                `;
+
+                if (isExpanded) {
+                    let ordersHtml = '';
+                    if (trade.orders) {
+                        for (const [key, order] of Object.entries(trade.orders)) {
+                            if (order) {
+                                ordersHtml += `<div><strong>${key.toUpperCase()}:</strong> ${escapeHtml(JSON.stringify(order))}</div>`;
+                            }
+                        }
+                    }
+
+                    html += `
+                        <tr class="details-row">
+                            <td colspan="7">
+                                <div class="details-container">
+                                    <div><strong>ID da Operação:</strong> ${escapeHtml(trade._id)}</div>
+                                    ${trade.errorMessage ? `<div style="color: var(--danger)"><strong>Erro:</strong> ${escapeHtml(trade.errorMessage)}</div>` : ''}
+                                    ${ordersHtml ? `<div style="margin-top: 6px;"><strong>Ordens Executadas:</strong>${ordersHtml}</div>` : ''}
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                }
+            });
+
+            tradesList.innerHTML = html;
+        }
+
+        function updatePagination() {
+            const start = totalTrades === 0 ? 0 : (currentPage - 1) * limit + 1;
+            const end = Math.min(currentPage * limit, totalTrades);
+            showingRange.textContent = `Mostrando ${start} - ${end} de ${totalTrades}`;
+
+            paginationInfo.textContent = `Página ${currentPage} de ${Math.ceil(totalTrades / limit) || 1}`;
+
+            btnPrev.disabled = currentPage === 1;
+            btnNext.disabled = currentPage >= Math.ceil(totalTrades / limit);
+        }
+
+        // Event Listeners
+        filterStatus.addEventListener('change', () => {
+            currentStatusFilter = filterStatus.value;
+            currentPage = 1;
+            loadTrades();
+        });
+
+        btnPrev.addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage--;
+                loadTrades();
+            }
+        });
+
+        btnNext.addEventListener('click', () => {
+            if (currentPage < Math.ceil(totalTrades / limit)) {
+                currentPage++;
+                loadTrades();
+            }
+        });
+
+        btnRefresh.addEventListener('click', () => {
+            fetchStats();
+            loadTrades();
+        });
+
+        tradesList.addEventListener('click', (e) => {
+            const button = e.target.closest('button[data-action="toggle-details"]');
+            if (!button) return;
+
+            const tr = button.closest('tr');
+            const tradeId = tr.dataset.tradeId;
+
+            if (expandedTrades.has(tradeId)) {
+                expandedTrades.delete(tradeId);
+            } else {
+                expandedTrades.add(tradeId);
+            }
+
+            // Recarregar tabela para renderizar os detalhes expandidos
+            loadTrades();
+        });
+
+        // Init
+        fetchStats();
+        loadTrades();
+    </script>
+</body>
+</html>

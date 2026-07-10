@@ -8,7 +8,10 @@ const {
     deleteCrossMarketStrategy,
     toggleCrossMarketStrategy,
     getCrossMarketTrades,
-    getCrossMarketTradesCount
+    getCrossMarketTradesCount,
+    createSimpleTrade,
+    getSimpleTrades,
+    getSimpleTradesCount
 } = require('../database');
 const crossMarketService = require('../cross-market-service');
 const { verifyToken } = require('../middleware/auth-middleware');
@@ -54,12 +57,7 @@ async function createStrategy({ request, response }) {
             return;
         }
 
-        if (exchange1.toUpperCase() === exchange2.toUpperCase()) {
-            sendJson(response, 400, {
-                error: 'As corretoras 1 e 2 devem ser diferentes'
-            });
-            return;
-        }
+        // Mesma corretora permitida por solicitação do usuário
 
         const strategyData = {
             name: name.trim(),
@@ -126,10 +124,7 @@ async function updateStrategy({ request, response, params }) {
             return;
         }
 
-        if (updates.exchange1 && updates.exchange2 && updates.exchange1 === updates.exchange2) {
-            sendJson(response, 400, { error: 'As corretoras 1 e 2 devem ser diferentes' });
-            return;
-        }
+        // Mesma corretora permitida por solicitação do usuário
 
         const strategy = await updateCrossMarketStrategy(id, decoded.id, updates);
 
@@ -467,6 +462,7 @@ async function startAutoExecution({ request, response, params }) {
             sendJson(response, 500, { error: 'Serviço não suporta escuta contínua' });
             return;
         }
+        await updateCrossMarketStrategy(id, decoded.id, { active: true });
         crossMarketService.startStrategyScan(strategy);
         sendJson(response, 200, {
             message: `Escuta contínua ativada para estratégia ${strategy.name}. Intervalo: ${strategy.scanIntervalMs || 5000}ms`
@@ -490,6 +486,7 @@ async function stopAutoExecution({ request, response, params }) {
             sendJson(response, 500, { error: 'Serviço não suporta parada de escuta' });
             return;
         }
+        await updateCrossMarketStrategy(id, decoded.id, { active: false });
         crossMarketService.stopStrategyScan(id);
         sendJson(response, 200, {
             message: `Escuta contínua interrompida para estratégia ${strategy.name}`
@@ -565,7 +562,7 @@ async function getTradesStats({ request, response }) {
             partialFailureCount,
             failedCount,
             totalProfit,
-            profitByCoin,
+                        profitByCoin,
             profitByExchange,
             countByStrategy
         });
@@ -574,20 +571,235 @@ async function getTradesStats({ request, response }) {
     }
 }
 
+async function executeSimpleTrade({ request, response, params }) {
+    const decoded = verifyToken(request, response);
+    if (!decoded) return;
+
+    const { exchangeId } = params;
+    const exchangeAcronym = exchangeId.toUpperCase();
+
+    let originalSymbol, side, amount;
+    try {
+        const body = await readJsonBody(request);
+        originalSymbol = body.symbol;
+        side = body.side;
+        amount = body.amount;
+    } catch (e) {
+        sendJson(response, 400, { error: 'Corpo da requisição inválido' });
+        return;
+    }
+
+    if (!originalSymbol || !side || !amount) {
+        sendJson(response, 400, { error: 'Campos obrigatórios: symbol, side, amount' });
+        return;
+    }
+
+    const [asset1, asset2] = originalSymbol.split('/');
+    if (asset1 === asset2) {
+        sendJson(response, 400, { error: 'Não é possível fazer trade de uma moeda por ela mesma.' });
+        return;
+    }
+
+    let symbol = originalSymbol;
+    let sideResolved = side.toLowerCase();
+    let finalAmount = Number(amount);
+    let orderPrice = 0;
+    let orderId = null;
+    let orderFee = null;
+    let rawOrder = null;
+
+    try {
+        const instance = await crossMarketService.getCcxtInstance(exchangeAcronym, true);
+        if (!instance) {
+            throw new Error(`Corretora ${exchangeAcronym} não configurada ou inativa`);
+        }
+
+        if (Object.keys(instance.markets || {}).length === 0) {
+            await instance.loadMarkets().catch(() => {});
+        }
+
+        const reversedSymbol = `${asset2}/${asset1}`;
+        let market = instance.markets[symbol];
+        let isReversed = false;
+
+        if (!market && instance.markets[reversedSymbol]) {
+            symbol = reversedSymbol;
+            market = instance.markets[symbol];
+            isReversed = true;
+            sideResolved = sideResolved === 'buy' ? 'sell' : 'buy';
+            console.log(`[Simple Trade Symbol Resolution] Símbolo original ${originalSymbol} não encontrado. Usando reverso ${symbol} e invertendo para ${sideResolved}`);
+        }
+
+        if (!market) {
+            throw new Error(`Símbolo ${originalSymbol} ou seu reverso não está disponível na corretora ${exchangeAcronym}`);
+        }
+
+        let currentMarketPrice = undefined;
+        try {
+            const ticker = await instance.fetchTicker(symbol);
+            currentMarketPrice = ticker.close || ticker.last || undefined;
+            orderPrice = currentMarketPrice || 0;
+        } catch (err) {
+            console.log(`[Simple Trade Price Fetch Warning] Não foi possível obter o preço do par ${symbol}: ${err.message}`);
+        }
+
+        if (isReversed) {
+            if (currentMarketPrice && currentMarketPrice > 0) {
+                finalAmount = finalAmount / currentMarketPrice;
+                console.log(`[Simple Trade Amount Adjustment] Quantidade ajustada para reverso de ${amount} para ${finalAmount} no par ${symbol}`);
+            } else {
+                throw new Error(`Não foi possível realizar o trade com par reverso ${symbol} pois o preço atual do par é inválido.`);
+            }
+        }
+
+        const minAmount = (market.limits && market.limits.amount && market.limits.amount.min) || 0;
+        const precisionAmount = (market.precision && market.precision.amount) || 0.00000001;
+
+        const limitFloor = Math.max(minAmount, precisionAmount);
+        if (finalAmount < limitFloor) {
+            finalAmount = limitFloor;
+        }
+
+        if (instance.amountToPrecision) {
+            try {
+                finalAmount = Number(instance.amountToPrecision(symbol, finalAmount));
+            } catch (e) {
+                const decimals = typeof precisionAmount === 'number' && precisionAmount < 1 
+                    ? Math.round(Math.abs(Math.log10(precisionAmount))) 
+                    : 4;
+                finalAmount = Number(finalAmount.toFixed(decimals));
+            }
+        }
+
+        console.log(`[Simple Trade] Executando ordem a mercado na ${exchangeAcronym}: ${sideResolved} ${finalAmount} ${symbol} com preço base ${currentMarketPrice}`);
+        const order = await instance.createOrder(symbol, 'market', sideResolved, finalAmount, currentMarketPrice);
+
+        rawOrder = order;
+        orderId = order.id || order.clientOrderId;
+        orderPrice = order.price || order.average || orderPrice || 0;
+
+        let feeCost = 0;
+        let feeCurrency = symbol.split('/')[1];
+
+        if (order.fee && typeof order.fee.cost === 'number') {
+            feeCost = order.fee.cost;
+            if (order.fee.currency) {
+                feeCurrency = order.fee.currency;
+            }
+        } else if (Array.isArray(order.fees) && order.fees.length > 0) {
+            feeCost = order.fees.reduce((acc, f) => acc + (f.cost || 0), 0);
+            feeCurrency = order.fees[0].currency || feeCurrency;
+        } else if (orderId && instance.has && instance.has['fetchOrder']) {
+            try {
+                await new Promise(resolve => setTimeout(resolve, 500));
+                const fetchedOrder = await instance.fetchOrder(orderId, symbol);
+                if (fetchedOrder) {
+                    if (fetchedOrder.fee && typeof fetchedOrder.fee.cost === 'number') {
+                        feeCost = fetchedOrder.fee.cost;
+                        if (fetchedOrder.fee.currency) {
+                            feeCurrency = fetchedOrder.fee.currency;
+                        }
+                    } else if (Array.isArray(fetchedOrder.fees) && fetchedOrder.fees.length > 0) {
+                        feeCost = fetchedOrder.fees.reduce((acc, f) => acc + (f.cost || 0), 0);
+                        feeCurrency = fetchedOrder.fees[0].currency || feeCurrency;
+                    }
+                }
+            } catch (err) {
+                console.log(`[Simple Trade Fee Lookup Warning] Não foi possível buscar detalhes da ordem para taxa: ${err.message}`);
+            }
+        }
+
+        orderFee = {
+            cost: feeCost,
+            currency: feeCurrency
+        };
+
+        if (!orderPrice) {
+            try {
+                const ticker = await instance.fetchTicker(symbol);
+                orderPrice = ticker.close || ticker.last || 0;
+            } catch (err) {}
+        }
+
+        await createSimpleTrade({
+            userId: decoded.id,
+            exchange: exchangeAcronym,
+            symbol,
+            side: side.toUpperCase(),
+            amount: finalAmount,
+            price: orderPrice,
+            orderId,
+            fee: orderFee,
+            status: 'SUCCESS',
+            rawOrder
+        });
+
+        if (crossMarketService.updateBalanceCache) {
+            crossMarketService.updateBalanceCache(exchangeAcronym).catch(() => {});
+        }
+
+        sendJson(response, 200, {
+            message: `Ordem de ${side.toUpperCase()} de ${finalAmount} ${symbol.split('/')[0]} executada com sucesso!`,
+            order
+        });
+    } catch (error) {
+        console.error('[Simple Trade Error]', error);
+
+        await createSimpleTrade({
+            userId: decoded.id,
+            exchange: exchangeAcronym,
+            symbol,
+            side: side.toUpperCase(),
+            amount: finalAmount,
+            price: 0,
+            status: 'FAILED',
+            errorMessage: error.message
+        }).catch(() => {});
+
+        sendJson(response, 500, { error: error.message });
+    }
+}
+
+async function getSimpleTradesList({ request, response }) {
+    const decoded = verifyToken(request, response);
+    if (!decoded) return;
+    try {
+        const urlObj = new URL(request.url, `http://${request.headers.host}`);
+        const limit = parseInt(urlObj.searchParams.get('limit')) || 50;
+        const skip = parseInt(urlObj.searchParams.get('skip')) || 0;
+
+        const [trades, total] = await Promise.all([
+            getSimpleTrades(decoded.id, {}, { limit, skip }),
+            getSimpleTradesCount(decoded.id)
+        ]);
+
+        sendJson(response, 200, { trades, total, limit, skip });
+    } catch (error) {
+        sendJson(response, 500, { error: error.message });
+    }
+}
+
 function registerCrossMarketRoutes(router) {
+    // Rotas estáticas GET primeiro para evitar colisão com parâmetros dinâmicos (:id)
     router.register('GET', '/api/cross-market', listStrategies);
     router.register('GET', '/api/cross-market/status', getServiceStatus);
     router.register('GET', '/api/cross-market/trades', getTradesList);
     router.register('GET', '/api/cross-market/trades/stats', getTradesStats);
+    router.register('GET', '/api/cross-market/simple-trades', getSimpleTradesList);
+    router.register('GET', '/api/cross-market/execute-all', executeAllStrategies);
+    router.register('GET', '/api/cross-market/logs', getLogs);
+
+    // Rotas dinâmicas GET
     router.register('GET', '/api/cross-market/:id', getStrategyById);
     router.register('GET', '/api/cross-market/:id/scan', executeScanHandler);
     router.register('GET', '/api/cross-market/:id/execute', executeStrategyById);
-    router.register('GET', '/api/cross-market/execute-all', executeAllStrategies);
     router.register('GET', '/api/cross-market/:id/subscribe', startAutoExecution);
     router.register('GET', '/api/cross-market/:id/unsubscribe', stopAutoExecution);
-    router.register('GET', '/api/cross-market/logs', getLogs);
     router.register('GET', '/api/cross-market/:exchangeId/balances', getBalances);
+
+    // Outros métodos
     router.register('POST', '/api/cross-market', createStrategy);
+    router.register('POST', '/api/cross-market/:exchangeId/trade', executeSimpleTrade);
     router.register('PUT', '/api/cross-market/:id', updateStrategy);
     router.register('DELETE', '/api/cross-market/:id', deleteStrategy);
     router.register('PATCH', '/api/cross-market/:id/toggle', toggleStrategy);

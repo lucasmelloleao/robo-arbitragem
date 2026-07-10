@@ -5,6 +5,9 @@ const CrossMarket = require('./models/CrossMarket');
 const CrossMarketTrade = require('./models/CrossMarketTrade');
 const TransferCatalog = require('./models/TransferCatalog');
 const TransferHistory = require('./models/TransferHistory');
+const SimpleTrade = require('./models/SimpleTrade');
+const ArbitrageTrade = require('./models/ArbitrageTrade');
+const ArbitrageStrategy = require('./models/ArbitrageStrategy');
 
 const databaseUri = process.env.MONGODB_URI;
 let isConnected = false;
@@ -110,6 +113,12 @@ async function connect() {
         isConnected = true;
         retryCount = 0;
         console.log('[database] Conectado ao MongoDB');
+
+        // Executar migração de configurações de arbitragem clássica para estratégias
+        const { runMigration } = require('./scripts/migrate-arbitrage');
+        runMigration().catch((err) => {
+            console.error('[database] Erro na migração pós-conexão:', err.message);
+        });
     } catch (error) {
         connectionPromise = null;
         
@@ -269,6 +278,49 @@ async function toggleExchangeStatus(id, userId) {
     return sanitizeExchange(exchange);
 }
 
+// ------- Arbitrage Strategy -------
+async function getAllArbitrageStrategies(userId) {
+    assertDatabaseAvailable();
+    const filter = userId ? { userId } : {};
+    return ArbitrageStrategy.find(filter).sort({ created_at: -1 }).lean();
+}
+
+async function getArbitrageStrategyById(id, userId) {
+    assertDatabaseAvailable();
+    const filter = userId ? { _id: id, userId } : { _id: id };
+    return ArbitrageStrategy.findOne(filter).lean();
+}
+
+async function createArbitrageStrategy(userId, data) {
+    assertDatabaseAvailable();
+    const strategy = new ArbitrageStrategy({ ...data, userId });
+    await strategy.save();
+    return strategy.toObject();
+}
+
+async function updateArbitrageStrategy(id, userId, updates) {
+    assertDatabaseAvailable();
+    return ArbitrageStrategy.findOneAndUpdate(
+        { _id: id, userId },
+        updates,
+        { returnDocument: 'after' }
+    ).lean();
+}
+
+async function deleteArbitrageStrategy(id, userId) {
+    assertDatabaseAvailable();
+    return ArbitrageStrategy.findOneAndDelete({ _id: id, userId }).lean();
+}
+
+async function toggleArbitrageStrategy(id, userId) {
+    assertDatabaseAvailable();
+    const strategy = await ArbitrageStrategy.findOne({ _id: id, userId });
+    if (!strategy) return null;
+    strategy.active = !strategy.active;
+    await strategy.save();
+    return strategy.toObject();
+}
+
 // ------- Cross-Market Strategy (API — filtrado por userId) -------
 
 // Versão sem filtro usada pelo cross-market-service (background)
@@ -343,6 +395,35 @@ async function getCrossMarketTradesCount(userId, filter = {}) {
     return CrossMarketTrade.countDocuments(queryFilter);
 }
 
+async function createSimpleTrade(tradeData) {
+    assertDatabaseAvailable();
+    const trade = new SimpleTrade(tradeData);
+    await trade.save();
+    return trade.toObject();
+}
+
+async function getSimpleTrades(userId, filter = {}, options = {}) {
+    assertDatabaseAvailable();
+    const queryFilter = { ...filter };
+    if (userId) queryFilter.userId = userId;
+    
+    const limit = parseInt(options.limit) || 100;
+    const skip = parseInt(options.skip) || 0;
+    
+    return SimpleTrade.find(queryFilter)
+        .sort({ created_at: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean();
+}
+
+async function getSimpleTradesCount(userId, filter = {}) {
+    assertDatabaseAvailable();
+    const queryFilter = { ...filter };
+    if (userId) queryFilter.userId = userId;
+    return SimpleTrade.countDocuments(queryFilter);
+}
+
 async function createTransferCatalogEntry(userId, data) {
     assertDatabaseAvailable();
     const query = { userId, exchange: data.exchange.toUpperCase(), currency: data.currency.toUpperCase(), network: data.network };
@@ -384,6 +465,62 @@ async function getTransferHistory(userId) {
         .lean();
 }
 
+async function getArbitrageTrades(userId, filter = {}, options = {}) {
+    assertDatabaseAvailable();
+    const queryFilter = { ...filter };
+    if (userId) queryFilter.userId = userId;
+    
+    const limit = parseInt(options.limit) || 100;
+    const skip = parseInt(options.skip) || 0;
+    
+    return ArbitrageTrade.find(queryFilter)
+        .sort({ created_at: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean();
+}
+
+async function getArbitrageTradesCount(userId, filter = {}) {
+    assertDatabaseAvailable();
+    const queryFilter = { ...filter };
+    if (userId) queryFilter.userId = userId;
+    return ArbitrageTrade.countDocuments(queryFilter);
+}
+
+async function getArbitrageTradesStats(userId) {
+    assertDatabaseAvailable();
+    const filter = userId ? { userId } : {};
+    
+    const results = await ArbitrageTrade.aggregate([
+        { $match: filter },
+        {
+            $group: {
+                _id: null,
+                totalTrades: { $sum: 1 },
+                totalProfit: { $sum: '$profitLoss' },
+                successCount: { $sum: { $cond: [{ $eq: ['$status', 'SUCCESS'] }, 1, 0] } },
+                partialFailureCount: { $sum: { $cond: [{ $eq: ['$status', 'PARTIAL_FAILURE'] }, 1, 0] } },
+                failedCount: { $sum: { $cond: [{ $eq: ['$status', 'FAILED'] }, 1, 0] } }
+            }
+        }
+    ]);
+    
+    return results[0] || {
+        totalTrades: 0,
+        totalProfit: 0,
+        successCount: 0,
+        partialFailureCount: 0,
+        failedCount: 0
+    };
+}
+
+async function createArbitrageTrade(data) {
+    assertDatabaseAvailable();
+    const trade = new ArbitrageTrade(data);
+    await trade.save();
+    return trade.toObject();
+}
+
 module.exports = {
     connect,
     disconnect,
@@ -402,6 +539,13 @@ module.exports = {
     updateExchange,
     deleteExchange,
     toggleExchangeStatus,
+    // Arbitrage Strategies
+    getAllArbitrageStrategies,
+    getArbitrageStrategyById,
+    createArbitrageStrategy,
+    updateArbitrageStrategy,
+    deleteArbitrageStrategy,
+    toggleArbitrageStrategy,
     // Cross-Market
     getAllCrossMarketStrategies,
     getCrossMarketStrategyById,
@@ -412,6 +556,15 @@ module.exports = {
     createCrossMarketTrade,
     getCrossMarketTrades,
     getCrossMarketTradesCount,
+    // Arbitrage Trades
+    createArbitrageTrade,
+    getArbitrageTrades,
+    getArbitrageTradesCount,
+    getArbitrageTradesStats,
+    // Simple Trades
+    createSimpleTrade,
+    getSimpleTrades,
+    getSimpleTradesCount,
     // Transfer Catalog
     createTransferCatalogEntry,
     getTransferCatalogEntries,

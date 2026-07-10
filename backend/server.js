@@ -40,7 +40,8 @@ function parseExchangePath(pathname) {
     return { exchangeId, relativePath };
 }
 
-function createAppServer() {
+function createAppServer(configOpts = {}) {
+    const { strategy } = configOpts;
     const services = new Map();
     const marketMakingServices = new Map();
     const publicDirs = [
@@ -70,18 +71,29 @@ function createAppServer() {
         }
     }
 
-    async function getService(exchangeId) {
-        const resolvedExchangeId = exchangeId || 'binance';
-
-        if (!services.has(resolvedExchangeId)) {
-            const servicePromise = createArbitrageService(resolvedExchangeId).catch((error) => {
-                services.delete(resolvedExchangeId);
-                throw error;
-            });
-            services.set(resolvedExchangeId, servicePromise);
+    async function getService(strategyId) {
+        if (!strategyId) {
+            throw new Error('strategyId é obrigatório para obter o serviço de arbitragem.');
         }
 
-        return await services.get(resolvedExchangeId);
+        const key = String(strategyId);
+
+        if (!services.has(key)) {
+            const servicePromise = (async () => {
+                const { getArbitrageStrategyById } = require('./src/database');
+                const strategy = await getArbitrageStrategyById(key);
+                if (!strategy) {
+                    throw new Error(`Estratégia de arbitragem ${key} não encontrada no banco.`);
+                }
+                return await createArbitrageService(strategy);
+            })().catch((error) => {
+                services.delete(key);
+                throw error;
+            });
+            services.set(key, servicePromise);
+        }
+
+        return await services.get(key);
     }
 
     async function getMarketMakingService(exchangeId) {
@@ -110,13 +122,24 @@ function createAppServer() {
         }
     }
 
-    async function pushExchangeUpdate(socket, exchangeId) {
-        const service = await getService(exchangeId);
-        await service.scan();
+    function broadcastExchangeUpdate(strategyId, status) {
+        const payload = { type: 'exchange-update', strategyId, payload: status };
+        for (const [socket, subs] of socketSubscriptions.entries()) {
+            if (socket.readyState === socket.OPEN && subs.has(strategyId)) {
+                sendSocketMessage(socket, payload);
+            }
+        }
+    }
+
+    async function pushExchangeUpdate(socket, strategyId) {
+        const service = await getService(strategyId);
         const status = await service.getStatus();
+        status.isRunning = backgroundArbitrageSubscriptions.has(String(strategyId));
 
         if (socket) {
-            sendSocketMessage(socket, { type: 'exchange-update', exchangeId, payload: status });
+            sendSocketMessage(socket, { type: 'exchange-update', strategyId, payload: status });
+        } else {
+            broadcastExchangeUpdate(strategyId, status);
         }
 
         return status;
@@ -220,16 +243,6 @@ function createAppServer() {
     }
 
     function clearSocketSubscriptions(socket) {
-        const subscriptions = socketSubscriptions.get(socket);
-
-        if (!subscriptions) {
-            return;
-        }
-
-        for (const subscription of subscriptions.values()) {
-            clearInterval(subscription.intervalId);
-        }
-
         socketSubscriptions.delete(socket);
     }
 
@@ -249,47 +262,25 @@ function createAppServer() {
 
     async function subscribeSocketToExchange(socket, exchangeId) {
         const subscriptions = getSocketExchangeSubscriptions(socket);
+        const key = String(exchangeId);
 
-        if (subscriptions.has(exchangeId)) {
-            return { exchangeId, subscribed: true, intervalMs: subscriptions.get(exchangeId).intervalMs };
+        if (subscriptions.has(key)) {
+            return { exchangeId: key, subscribed: true };
         }
 
-        const service = await getService(exchangeId);
-        const intervalMs = service.getConfig().scanIntervalMs;
-        const subscription = {
-            intervalMs,
-            intervalId: null,
-            running: false
-        };
+        subscriptions.set(key, { active: true });
 
-        const runSubscriptionCycle = async () => {
-            if (subscription.running) {
-                return;
-            }
+        try {
+            await pushExchangeUpdate(socket, key);
+        } catch (error) {
+            sendSocketMessage(socket, {
+                type: 'exchange-error',
+                exchangeId: key,
+                error: error.message
+            });
+        }
 
-            subscription.running = true;
-
-            try {
-                await pushExchangeUpdate(socket, exchangeId);
-            } catch (error) {
-                sendSocketMessage(socket, {
-                    type: 'exchange-error',
-                    exchangeId,
-                    error: error.message
-                });
-            } finally {
-                subscription.running = false;
-            }
-        };
-
-        subscription.intervalId = setInterval(() => {
-            runSubscriptionCycle();
-        }, intervalMs);
-
-        subscriptions.set(exchangeId, subscription);
-        runSubscriptionCycle().catch(() => {});
-
-        return { exchangeId, subscribed: true, intervalMs };
+        return { exchangeId: key, subscribed: true };
     }
 
     async function subscribeSocketToMarketMaking(socket, exchangeId) {
@@ -378,19 +369,19 @@ function createAppServer() {
 
     function unsubscribeSocketFromExchange(socket, exchangeId) {
         const subscriptions = socketSubscriptions.get(socket);
+        const key = String(exchangeId);
 
-        if (!subscriptions || !subscriptions.has(exchangeId)) {
-            return { exchangeId, subscribed: false };
+        if (!subscriptions || !subscriptions.has(key)) {
+            return { exchangeId: key, subscribed: false };
         }
 
-        clearInterval(subscriptions.get(exchangeId).intervalId);
-        subscriptions.delete(exchangeId);
+        subscriptions.delete(key);
 
         if (subscriptions.size === 0) {
             socketSubscriptions.delete(socket);
         }
 
-        return { exchangeId, subscribed: false };
+        return { exchangeId: key, subscribed: false };
     }
 
     function unsubscribeSocketFromMarketMaking(socket, exchangeId) {
@@ -456,6 +447,20 @@ function createAppServer() {
         response.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
         try {
+            // Filtrar rotas baseado na estratégia do servidor (separação de portas)
+            if (strategy === 'cross-market' && !requestUrl.pathname.startsWith('/api/cross-market')) {
+                sendJson(response, 403, { error: 'Este servidor lida apenas com requisições cross-market.' });
+                return;
+            }
+            if (strategy === 'market-making' && !requestUrl.pathname.startsWith('/api/market-making') && !requestUrl.pathname.startsWith('/api/exchanges')) {
+                sendJson(response, 403, { error: 'Este servidor lida apenas com requisições de market making.' });
+                return;
+            }
+            if (strategy === 'arbitrage' && (requestUrl.pathname.startsWith('/api/cross-market') || requestUrl.pathname.startsWith('/api/market-making'))) {
+                sendJson(response, 403, { error: 'Este servidor lida apenas com arbitragem clássica e rotas administrativas.' });
+                return;
+            }
+
             const { relativePath } = parseExchangePath(requestUrl.pathname);
 
             if (await apiRouter.handle(request, response, requestUrl)) {
@@ -463,7 +468,15 @@ function createAppServer() {
             }
 
             if (request.method === 'GET') {
-                await serveStaticFile(response, relativePath);
+                try {
+                    await serveStaticFile(response, relativePath);
+                } catch (error) {
+                    if (error.code === 'ENOENT' && !requestUrl.pathname.startsWith('/api/')) {
+                        await serveStaticFile(response, '/index.html');
+                    } else {
+                        throw error;
+                    }
+                }
                 return;
             }
 
@@ -538,13 +551,17 @@ function createAppServer() {
         });
     });
 
-    async function startBackgroundArbitrage(exchangeId) {
-        const resolvedExchangeId = exchangeId || 'binance';
+    async function startBackgroundArbitrage(strategyId) {
+        if (!strategyId) {
+            throw new Error('strategyId é obrigatório.');
+        }
 
-        if (backgroundArbitrageSubscriptions.has(resolvedExchangeId)) {
-            const currentSubscription = backgroundArbitrageSubscriptions.get(resolvedExchangeId);
+        const key = String(strategyId);
+
+        if (backgroundArbitrageSubscriptions.has(key)) {
+            const currentSubscription = backgroundArbitrageSubscriptions.get(key);
             return {
-                exchangeId: resolvedExchangeId,
+                strategyId: key,
                 subscribed: true,
                 intervalMs: currentSubscription.intervalMs,
                 scanCount: currentSubscription.scanCount,
@@ -552,7 +569,7 @@ function createAppServer() {
             };
         }
 
-        const service = await getService(resolvedExchangeId);
+        const service = await getService(key);
         const config = service.getConfig();
         const subscription = {
             intervalMs: config.scanIntervalMs,
@@ -570,24 +587,25 @@ function createAppServer() {
             subscription.running = true;
 
             try {
-                await pushExchangeUpdate(null, resolvedExchangeId);
+                const service = await getService(key);
+                await service.scan();
+                await pushExchangeUpdate(null, key);
                 subscription.scanCount += 1;
 
                 if (subscription.maxScans > 0 && subscription.scanCount >= subscription.maxScans) {
                     clearInterval(subscription.intervalId);
-                    backgroundArbitrageSubscriptions.delete(resolvedExchangeId);
-                    console.log(`[arbitrage] loop em background encerrado para ${resolvedExchangeId} apos ${subscription.scanCount} scan(s) (limite configurado).`);
+                    backgroundArbitrageSubscriptions.delete(key);
+                    console.log(`[arbitrage] loop em background encerrado para estratégia ${key} após ${subscription.scanCount} scan(s).`);
                 }
             } catch (error) {
-                // RATE LIMIT (429): para o loop IMEDIATAMENTE para não agravar o bloqueio
                 if (isRateLimitError(error)) {
                     clearInterval(subscription.intervalId);
-                    backgroundArbitrageSubscriptions.delete(resolvedExchangeId);
-                    console.error(`[arbitrage] RATE LIMIT (429) em ${resolvedExchangeId}. Loop em background ENCERRADO IMEDIATAMENTE para evitar bloqueio permanente. Mensagem: ${error.message}`);
+                    backgroundArbitrageSubscriptions.delete(key);
+                    console.error(`[arbitrage] RATE LIMIT (429) na estratégia ${key}. Loop encerrado.`);
                     return;
                 }
 
-                console.error(`[arbitrage] falha no loop em background para ${resolvedExchangeId}: ${error.message}`);
+                console.error(`[arbitrage] falha no loop em background para estratégia ${key}: ${error.message}`);
             } finally {
                 subscription.running = false;
             }
@@ -597,11 +615,11 @@ function createAppServer() {
             runSubscriptionCycle();
         }, subscription.intervalMs);
 
-        backgroundArbitrageSubscriptions.set(resolvedExchangeId, subscription);
+        backgroundArbitrageSubscriptions.set(key, subscription);
         await runSubscriptionCycle();
 
         return {
-            exchangeId: resolvedExchangeId,
+            strategyId: key,
             subscribed: true,
             intervalMs: subscription.intervalMs,
             scanCount: subscription.scanCount,
@@ -609,8 +627,40 @@ function createAppServer() {
         };
     }
 
+    function stopBackgroundArbitrage(strategyId) {
+        const key = String(strategyId);
+        const sub = backgroundArbitrageSubscriptions.get(key);
+        if (sub) {
+            clearInterval(sub.intervalId);
+            backgroundArbitrageSubscriptions.delete(key);
+            console.log(`[arbitrage] Loop de background parado para estratégia ${key}.`);
+            return true;
+        }
+        return false;
+    }
+
+    function stopAllBackgroundArbitrage() {
+        for (const [exchangeId, sub] of backgroundArbitrageSubscriptions.entries()) {
+            clearInterval(sub.intervalId);
+            console.log(`[arbitrage] Loop de background parado para ${exchangeId}.`);
+        }
+        backgroundArbitrageSubscriptions.clear();
+    }
+
+    function stopAllBackgroundMarketMaking() {
+        for (const [exchangeId, sub] of backgroundMarketMakingSubscriptions.entries()) {
+            clearInterval(sub.intervalId);
+            console.log(`[market-making] Loop de background parado para ${exchangeId}.`);
+        }
+        backgroundMarketMakingSubscriptions.clear();
+    }
+
     server.startBackgroundMarketMaking = startBackgroundMarketMaking;
     server.startBackgroundArbitrage = startBackgroundArbitrage;
+    server.stopBackgroundArbitrage = stopBackgroundArbitrage;
+    server.isArbitrageLoopRunning = (strategyId) => backgroundArbitrageSubscriptions.has(String(strategyId));
+    server.stopAllBackgroundArbitrage = stopAllBackgroundArbitrage;
+    server.stopAllBackgroundMarketMaking = stopAllBackgroundMarketMaking;
 
     return server;
 }

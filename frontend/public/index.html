@@ -32,41 +32,57 @@
                     <span class="nav-icon" aria-hidden="true">🏠</span>
                     <span>Home</span>
                 </button>
-                <button class="nav-item" data-view="arbitrage" type="button">
-                    <span class="nav-icon" aria-hidden="true">📊</span>
-                    <span>Arbitrage</span>
+                <button class="nav-item" data-view="balances" type="button">
+                    <span class="nav-icon" aria-hidden="true">💰</span>
+                    <span>Saldos</span>
                 </button>
-                <button class="nav-item" data-view="market-making" type="button">
-                    <span class="nav-icon" aria-hidden="true">📈</span>
-                    <span>Market Making</span>
+                <button class="nav-item" data-view="transfers" type="button">
+                    <span class="nav-icon" aria-hidden="true">💸</span>
+                    <span>Transferências</span>
                 </button>
-                <button class="nav-item" data-view="cross-market" type="button">
-                    <span class="nav-icon" aria-hidden="true">🔀</span>
-                    <span>Cross Market</span>
-                </button>
+
                 <div class="nav-section" role="separator">
                     <div class="nav-section-title">Estratégias</div>
-                    <button class="nav-item" data-view="cross-market" type="button">
-                        <span class="nav-icon" aria-hidden="true">🔄</span>
-                        <span>Cross-Market</span>
+                    <button class="nav-item" data-view="market-making" type="button">
+                        <span class="nav-icon" aria-hidden="true">📈</span>
+                        <span>Market Making</span>
                     </button>
-                    <button class="nav-item" data-view="cross-market-execution" type="button">
-                        <span class="nav-icon" aria-hidden="true">▶️</span>
-                        <span>Execução</span>
-                    </button>
-                    <button class="nav-item" data-view="cross-market-balances" type="button">
-                        <span class="nav-icon" aria-hidden="true">💰</span>
-                        <span>Saldos</span>
-                    </button>
-                    <button class="nav-item" data-view="cross-market-trades" type="button">
-                        <span class="nav-icon" aria-hidden="true">📋</span>
-                        <span>Operações</span>
-                    </button>
-                    <button class="nav-item" data-view="transfers" type="button">
-                        <span class="nav-icon" aria-hidden="true">💸</span>
-                        <span>Transferências</span>
-                    </button>
+                    
+                    <!-- Sub-seção de Arbitragem Clássica -->
+                    <div style="margin-top: var(--space-3); border-top: 1px dashed rgba(255,255,255,0.05); padding-top: var(--space-3);">
+                        <div class="nav-section-title" style="font-size: 0.75rem; letter-spacing: 0.05em; padding-left: var(--space-4);">Arbitragem Clássica</div>
+                        <button class="nav-item" data-view="arbitrage-config" type="button" style="padding-left: var(--space-6);">
+                            <span class="nav-icon" aria-hidden="true">📊</span>
+                            <span>Configuração</span>
+                        </button>
+                        <button class="nav-item" data-view="arbitrage-execution" type="button" style="padding-left: var(--space-6);">
+                            <span class="nav-icon" aria-hidden="true">▶️</span>
+                            <span>Execução</span>
+                        </button>
+                        <button class="nav-item" data-view="arbitrage-trades" type="button" style="padding-left: var(--space-6);">
+                            <span class="nav-icon" aria-hidden="true">📋</span>
+                            <span>Operações</span>
+                        </button>
+                    </div>
+                    
+                    <!-- Sub-seção de Cross-Market -->
+                    <div style="margin-top: var(--space-3); border-top: 1px dashed rgba(255,255,255,0.05); padding-top: var(--space-3);">
+                        <div class="nav-section-title" style="font-size: 0.75rem; letter-spacing: 0.05em; padding-left: var(--space-4);">Cross-Market</div>
+                        <button class="nav-item" data-view="cross-market" type="button" style="padding-left: var(--space-6);">
+                            <span class="nav-icon" aria-hidden="true">🔄</span>
+                            <span>Configuração</span>
+                        </button>
+                        <button class="nav-item" data-view="cross-market-execution" type="button" style="padding-left: var(--space-6);">
+                            <span class="nav-icon" aria-hidden="true">▶️</span>
+                            <span>Execução</span>
+                        </button>
+                        <button class="nav-item" data-view="cross-market-trades" type="button" style="padding-left: var(--space-6);">
+                            <span class="nav-icon" aria-hidden="true">📋</span>
+                            <span>Operações</span>
+                        </button>
+                    </div>
                 </div>
+
                 <div class="nav-section" role="separator">
                     <div class="nav-section-title">Cadastro</div>
                     <button class="nav-item" data-view="users" type="button">
@@ -78,6 +94,7 @@
                         <span>Exchanges</span>
                     </button>
                 </div>
+
                 <div class="nav-section" role="separator">
                     <button class="nav-item button-logout" id="btn-logout" type="button" style="margin-top: var(--space-4); border-top: 1px solid var(--border-card); padding-top: var(--space-4); color: var(--danger); width: 100%; text-align: left;">
                         <span class="nav-icon" aria-hidden="true" style="color: var(--danger);">🚪</span>
@@ -86,9 +103,13 @@
                 </div>
             </nav>
         </aside>
+        
+        <!-- Backdrop para fechar menu no mobile -->
+        <div id="sidebar-backdrop" class="sidebar-backdrop"></div>
 
         <!-- Header -->
         <header class="header" role="banner">
+            <button class="mobile-menu-trigger" id="mobile-menu-trigger" aria-label="Abrir menu" type="button">☰</button>
             <div class="header-title">ArbTrade</div>
             <div id="header-status" class="status-pill" style="display: none;" aria-live="polite">
                 <span class="status-dot" id="header-status-dot"></span>
@@ -102,25 +123,32 @@
             <section id="view-home" class="view-section active" aria-label="Home">
                 <div class="shell">
                     <div class="hero">
-                        <div class="hero-top">
+                        <div class="hero-top" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
                             <div>
                                 <div class="eyebrow">Dashboard</div>
                                 <h1>Bem-vindo ao ArbTrade</h1>
                             </div>
+                            <div style="display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2);">
+                                <span style="font-size: 0.75rem; color: var(--text-secondary); font-weight: bold; letter-spacing: 0.05em; text-transform: uppercase;">Execução Geral</span>
+                                <button id="btn-toggle-global-execution" class="primary" style="padding: 10px 20px; font-weight: bold; border-radius: var(--radius-lg); font-size: 0.85rem; min-width: 220px; transition: all 0.3s ease; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; border: 1px solid var(--accent); background: var(--accent); color: white;">
+                                    <span class="status-dot" id="global-execution-dot" style="background: #2ebd85; width: 10px; height: 10px; border-radius: 50%; display: inline-block;"></span>
+                                    <span id="global-execution-text">ESTRATÉGIAS ATIVAS</span>
+                                </button>
+                            </div>
                         </div>
-                        <p>Selecione um workspace para começar.</p>
+                        <p style="margin-top: var(--space-4);">Selecione um workspace para começar.</p>
                     </div>
 
                     <section class="workspace-section" aria-label="Workspaces disponíveis">
                         <div class="hero-workspaces">
-                            <button class="workspace-callout home-link-card" data-view="arbitrage" type="button" aria-label="Acessar workspace de Arbitrage">
+                            <button class="workspace-callout home-link-card" data-view="arbitrage-execution" type="button" aria-label="Acessar workspace de Arbitrage">
                                 <div>
                                     <p class="workspace-kicker">Workspace</p>
-                                    <h2>📊 Arbitrage</h2>
+                                    <h2>📊 Arbitragem</h2>
                                 </div>
-                                <p>Varreduras, rotas, histórico de scans e logs por corretora.</p>
+                                <p>Varreduras, rotas, histórico de scans e logs por estratégia.</p>
                                 <div class="actions">
-                                    <span class="primary" style="padding: 14px 22px; border-radius: 999px; display: inline-block;">Acessar Arbitrage</span>
+                                    <span class="primary" style="padding: 14px 22px; border-radius: 999px; display: inline-block;">Acessar Arbitragem</span>
                                 </div>
                             </button>
                             <button class="workspace-callout workspace-callout-mm home-link-card" data-view="market-making" type="button" aria-label="Acessar workspace de Market Making">
@@ -148,50 +176,19 @@
                 </div>
             </section>
 
-            <!-- Arbitrage -->
-            <section id="view-arbitrage" class="view-section" aria-label="Workspace de Arbitrage">
-                <div class="shell">
-                    <div class="hero">
-                        <div class="hero-top">
-                            <div>
-                                <div class="eyebrow">Workspace</div>
-                                <h1>Arbitrage</h1>
-                            </div>
-                            <div class="hero-status-group">
-                                <div class="status-pill" aria-label="Status das exchanges">
-                                    <span class="status-dot" aria-hidden="true"></span>
-                                    <span id="mode-label">Carregando exchanges...</span>
-                                </div>
-                                <div class="status-pill" id="socket-status-pill" data-socket-state="connecting" aria-label="Status da conexão WebSocket">
-                                    <span class="status-dot" id="socket-status-dot" aria-hidden="true"></span>
-                                    <span id="socket-status-label">WebSocket conectando...</span>
-                                </div>
-                                <div class="status-pill status-pill-wide" aria-label="Última atualização">
-                                    <span class="status-caption">Última atualização</span>
-                                    <span id="last-update-label">Aguardando dados...</span>
-                                </div>
-                            </div>
-                        </div>
-                        <p>Varreduras, rotas, histórico de scans e logs por corretora.</p>
-                        <div class="actions">
-                            <button class="primary" id="run-all" type="button">Executar todas</button>
-                            <button class="secondary" id="listen-all" type="button">Escutar todas</button>
-                            <button class="secondary" id="refresh-all" type="button">Atualizar arbitrage</button>
-                        </div>
-                        <span id="feedback" class="mono hero-feedback" role="status" aria-live="polite"></span>
-                    </div>
+            <!-- Arbitrage Config -->
+            <section id="view-arbitrage-config" class="view-section" aria-label="Estratégias de Arbitragem Clássica">
+                <iframe src="/arbitrage-config.html" class="iframe-shell" title="Estratégias de Arbitragem Clássica" loading="lazy"></iframe>
+            </section>
 
-                    <section class="workspace-section" aria-label="Painéis de arbitragem por exchange">
-                        <div class="section-heading">
-                            <div>
-                                <div class="eyebrow">Workspace</div>
-                                <h2>Arbitrage</h2>
-                            </div>
-                            <p>Painéis focados em scan, melhores rotas e logs persistidos.</p>
-                        </div>
-                        <div class="exchange-grid" id="exchange-grid" role="list" aria-label="Lista de exchanges"></div>
-                    </section>
-                </div>
+            <!-- Arbitrage Execution -->
+            <section id="view-arbitrage-execution" class="view-section" aria-label="Execução de Arbitragem Clássica">
+                <iframe src="/arbitrage-execution.html" class="iframe-shell" title="Execução de Arbitragem Clássica" loading="lazy"></iframe>
+            </section>
+
+            <!-- Arbitrage Trades -->
+            <section id="view-arbitrage-trades" class="view-section" aria-label="Workspace de Arbitragem Trades">
+                <iframe src="/arbitrage-trades.html" class="iframe-shell" title="Operações Arbitragem Clássica" loading="lazy"></iframe>
             </section>
 
             <!-- Market Making -->
@@ -318,15 +315,17 @@
                 <iframe src="/cross-market-execution.html" class="iframe-shell" title="Execução Cross Market" loading="lazy"></iframe>
             </section>
 
-            <!-- Cross Market Balances -->
-            <section id="view-cross-market-balances" class="view-section" aria-label="Workspace de Cross Market Balances">
-                <iframe src="/cross-market-balances.html" class="iframe-shell" title="Saldos Cross Market" loading="lazy"></iframe>
+            <!-- Balances -->
+            <section id="view-balances" class="view-section" aria-label="Saldos">
+                <iframe src="/balances.html" class="iframe-shell" title="Saldos" loading="lazy"></iframe>
             </section>
 
             <!-- Cross Market Trades -->
             <section id="view-cross-market-trades" class="view-section" aria-label="Workspace de Cross Market Trades">
                 <iframe src="/cross-market-trades.html" class="iframe-shell" title="Operações Cross Market" loading="lazy"></iframe>
             </section>
+
+
 
             <!-- Transfers Catalog -->
             <section id="view-transfers" class="view-section" aria-label="Workspace de Transferências">
@@ -439,12 +438,16 @@
             // Fechar sidebar mobile após navegação
             if (window.innerWidth <= 768 && sidebar) {
                 sidebar.classList.remove('mobile-open');
+                const backdrop = document.getElementById('sidebar-backdrop');
+                if (backdrop) {
+                    backdrop.classList.remove('active');
+                }
                 if (sidebarToggle) {
                     sidebarToggle.setAttribute('aria-expanded', 'false');
                 }
             }
 
-            if (viewName === 'arbitrage' || viewName === 'market-making' || viewName === 'cross-market' || viewName === 'cross-market-execution' || viewName === 'cross-market-balances' || viewName === 'cross-market-trades' || viewName === 'transfers') {
+            if (viewName === 'arbitrage-config' || viewName === 'arbitrage-execution' || viewName === 'arbitrage-trades' || viewName === 'market-making' || viewName === 'cross-market' || viewName === 'cross-market-execution' || viewName === 'balances' || viewName === 'cross-market-trades' || viewName === 'transfers') {
                 window.setTimeout(() => {
                     const app = window.app;
 
@@ -461,9 +464,15 @@
             }
         }
 
+        const backdrop = document.getElementById('sidebar-backdrop');
+        const mobileMenuTrigger = document.getElementById('mobile-menu-trigger');
+
         function toggleSidebar() {
             if (window.innerWidth <= 768) {
                 const isOpen = sidebar.classList.toggle('mobile-open');
+                if (backdrop) {
+                    backdrop.classList.toggle('active', isOpen);
+                }
                 if (sidebarToggle) {
                     sidebarToggle.setAttribute('aria-expanded', String(isOpen));
                 }
@@ -490,6 +499,18 @@
             sidebarToggle.addEventListener('click', toggleSidebar);
         }
 
+        if (mobileMenuTrigger) {
+            mobileMenuTrigger.addEventListener('click', toggleSidebar);
+        }
+
+        if (backdrop) {
+            backdrop.addEventListener('click', () => {
+                if (sidebar.classList.contains('mobile-open')) {
+                    toggleSidebar();
+                }
+            });
+        }
+
         function navigateTo(viewName) {
             const path = viewName === 'home' ? '/' : `/${viewName}`;
             history.pushState({ viewName }, '', path);
@@ -504,8 +525,90 @@
             showView(path);
         }
 
+        // ===== Controle de Execução Global das Estratégias =====
+        const btnToggleGlobal = document.getElementById('btn-toggle-global-execution');
+        const globalDot = document.getElementById('global-execution-dot');
+        const globalText = document.getElementById('global-execution-text');
+        let globalExecutionActive = true;
+
+        function getSystemApiUrl(pathname) {
+            const baseUrl = window.API_URL || 'http://localhost:8081';
+            const normalized = pathname.replace(/^\//, '');
+            return `${baseUrl}/api/${normalized}`;
+        }
+
+        async function fetchGlobalExecutionStatus() {
+            if (!btnToggleGlobal) return;
+            const token = localStorage.getItem('authToken');
+            try {
+                const response = await fetch(getSystemApiUrl('system/execution-status'), {
+                    method: 'GET',
+                    headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    updateGlobalButtonUI(data.active);
+                }
+            } catch (err) {
+                console.error('Erro ao buscar status global de execução:', err);
+            }
+        }
+
+        function updateGlobalButtonUI(active) {
+            globalExecutionActive = active;
+            if (active) {
+                btnToggleGlobal.style.background = 'var(--accent)';
+                btnToggleGlobal.style.borderColor = 'var(--accent)';
+                globalDot.style.background = '#2ebd85';
+                globalText.textContent = 'ESTRATÉGIAS ATIVAS';
+            } else {
+                btnToggleGlobal.style.background = 'var(--bg-card)';
+                btnToggleGlobal.style.borderColor = 'var(--border-card)';
+                globalDot.style.background = '#f6465d';
+                globalText.textContent = 'ESTRATÉGIAS DETIDAS';
+            }
+        }
+
+        if (btnToggleGlobal) {
+            btnToggleGlobal.addEventListener('click', async () => {
+                const token = localStorage.getItem('authToken');
+                const nextState = !globalExecutionActive;
+                
+                btnToggleGlobal.disabled = true;
+                const originalText = globalText.textContent;
+                globalText.textContent = 'Ajustando...';
+
+                try {
+                    const response = await fetch(getSystemApiUrl('system/toggle-execution'), {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                        },
+                        body: JSON.stringify({ active: nextState })
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        updateGlobalButtonUI(data.active);
+                        showToast(data.active ? 'Execuções de estratégias iniciadas!' : 'Todas as estratégias foram paradas imediatamente!', data.active ? 'success' : 'warning');
+                    } else {
+                        throw new Error('Erro na resposta do servidor');
+                    }
+                } catch (err) {
+                    showToast('Erro ao alternar execução global: ' + err.message, 'error');
+                    updateGlobalButtonUI(globalExecutionActive);
+                } finally {
+                    btnToggleGlobal.disabled = false;
+                }
+            });
+        }
+
         window.addEventListener('popstate', handleRouting);
-        window.addEventListener('load', handleRouting);
+        window.addEventListener('load', () => {
+            handleRouting();
+            fetchGlobalExecutionStatus();
+        });
 
         navItems.forEach((item) => {
             item.addEventListener('click', () => {
