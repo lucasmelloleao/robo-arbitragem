@@ -19,7 +19,7 @@ server.listen(port, () => {
 
 
 
-    
+    /*
     
         //const exchanges = ['binance', 'kraken', 'bybit', 'mexc', 'coinbase', 'gateio', 'okx', 'woo'];
         const exchanges = [ 'mexc'];
