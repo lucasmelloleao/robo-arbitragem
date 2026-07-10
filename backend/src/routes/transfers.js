@@ -190,10 +190,50 @@ async function lookupTransferInfo({ request, response }) {
         // Filtra para remover redes desativadas tanto para depósito quanto para saque
         networksList = networksList.filter(n => n.deposit || n.withdraw);
 
+        // Buscar preço estimado do coin em USDT/USD
+        let coinPrice = null;
+        if (coin === 'USDT' || coin === 'USD') {
+            coinPrice = 1;
+        } else {
+            try {
+                // Tenta coin/USDT na exchange selecionada
+                const ticker = await instance.fetchTicker(`${coin}/USDT`);
+                if (ticker && typeof ticker.last === 'number') {
+                    coinPrice = ticker.last;
+                }
+            } catch (err) {
+                try {
+                    // Tenta coin/USD na exchange selecionada
+                    const ticker = await instance.fetchTicker(`${coin}/USD`);
+                    if (ticker && typeof ticker.last === 'number') {
+                        coinPrice = ticker.last;
+                    }
+                } catch (err2) {
+                    // Fallback para Binance ou Gate.io ou outra
+                    const fallbacks = ['BINANCE', 'GATEIO', 'MEXC', 'OKX'];
+                    for (const fallbackEx of fallbacks) {
+                        try {
+                            const fbInstance = await crossMarketService.getCcxtInstance(fallbackEx, false).catch(() => null);
+                            if (fbInstance) {
+                                const ticker = await fbInstance.fetchTicker(`${coin}/USDT`);
+                                if (ticker && typeof ticker.last === 'number') {
+                                    coinPrice = ticker.last;
+                                    break;
+                                }
+                            }
+                        } catch (e) {
+                            // ignore
+                        }
+                    }
+                }
+            }
+        }
+
         sendJson(response, 200, {
             exchange: exchangeAcronym,
             currency: coin,
-            networks: networksList
+            networks: networksList,
+            coinPrice: coinPrice
         });
 
     } catch (error) {

@@ -393,7 +393,8 @@ async function getBalances({ request, response, params }) {
                         total: total,
                         free: balanceData.free[coin] || 0,
                         used: balanceData.used[coin] || 0,
-                        valueUsdt: valueUsdt
+                        valueUsdt: valueUsdt,
+                        price: coin === 'USDT' ? 1.0 : (tickers[coin] || null)
                     };
                 });
                 

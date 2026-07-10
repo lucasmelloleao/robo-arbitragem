@@ -696,6 +696,12 @@
 
             networkCards.innerHTML = data.networks.map(net => {
                 const netSafeId = net.network.replace(/[^a-zA-Z0-9]/g, '');
+                const feeUsdVal = data.coinPrice ? (net.fee * data.coinPrice) : null;
+                const minUsdVal = data.coinPrice ? (net.minAmount * data.coinPrice) : null;
+                
+                const feeUsdHtml = feeUsdVal !== null ? ` <span style="font-weight: normal; font-size: 0.8rem; color: var(--text-secondary);"> (~ $${formatNumber(feeUsdVal, 2)})</span>` : '';
+                const minUsdHtml = minUsdVal !== null ? ` <span style="font-weight: normal; font-size: 0.8rem; color: var(--text-secondary);"> (~ $${formatNumber(minUsdVal, 2)})</span>` : '';
+
                 return `
                     <div class="network-card" id="card-${netSafeId}">
                         <div>
@@ -703,11 +709,11 @@
                             <div style="margin-top: var(--space-2); display: flex; flex-direction: column; gap: 4px;">
                                 <div class="network-meta-row">
                                     <span>Taxa de Transferência:</span>
-                                    <strong>${formatNumber(net.fee, 6)} ${escapeHtml(data.currency)}</strong>
+                                    <strong>${formatNumber(net.fee, 6)} ${escapeHtml(data.currency)}${feeUsdHtml}</strong>
                                 </div>
                                 <div class="network-meta-row">
                                     <span>Saldo Mínimo:</span>
-                                    <strong>${formatNumber(net.minAmount, 6)} ${escapeHtml(data.currency)}</strong>
+                                    <strong>${formatNumber(net.minAmount, 6)} ${escapeHtml(data.currency)}${minUsdHtml}</strong>
                                 </div>
                                 <div class="network-meta-row">
                                     <span>Chegada Estimada:</span>

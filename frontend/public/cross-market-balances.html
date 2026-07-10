@@ -160,6 +160,10 @@
                     ? formatNumber(item.valueUsdt, 2)
                     : '--';
                 
+                const priceText = item.price !== null && typeof item.price !== 'undefined'
+                    ? formatNumber(item.price, item.price < 0.01 ? 8 : (item.price < 1 ? 6 : 4))
+                    : '--';
+                
                 const coinName = (item.currency || item.coin || 'N/A').toUpperCase();
                 const iconUrl = `https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/${coinName.toLowerCase()}.png`;
 
@@ -186,6 +190,10 @@
                     <div class="row">
                         <span>Em ordens</span>
                         <strong>${formatNumber(item.used || item.hold || 0, 8)}</strong>
+                    </div>
+                    <div class="row">
+                        <span>Preço (USDT)</span>
+                        <strong>${priceText}</strong>
                     </div>
                     <div class="row">
                         <span>Valor em USDT</span>
