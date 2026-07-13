@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8081:8081"
+    environment:
+      - NODE_ENV=development
+      - STRATEGY=arbitrage
+      - PORT_ARBITRAGE=8081
+      # Add other environment variables as needed, e.g., database connection strings
+      # - MONGODB_URI=mongodb://mongo:27017/arbitrage
+    # Uncomment if you need to connect to a database service
+    # depends_on:
+    #   - mongo
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_ENV=development
+    # Uncomment if you need to connect to a backend service
+    # depends_on:
+    #   - backend
+
+# Uncomment if you need a database service (e.g., MongoDB)
+#   mongo:
+#     image: mongo:5
+#     ports:
+#       - "27017:27017"
+#     volumes:
+#       - mongo-data:/data/db
+
+#volumes:
+#  mongo-data:

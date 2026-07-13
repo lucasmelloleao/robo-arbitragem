@@ -74,3 +74,52 @@ Ações suportadas:
 
 As rotas de usuário dependem de `MONGODB_URI` no ambiente.
 Sem essa variável, o backend sobe normalmente, mas as operações de usuário retornam erro de configuração.
+
+## Docker e Google Cloud Run
+
+O projeto está configurado para rodar no Google Cloud Run usando containers Docker.
+
+### Arquivos de configuração
+
+- `backend/Dockerfile`: imagem Docker para o backend (Node.js 18 Alpine).
+- `frontend/Dockerfile`: imagem Docker para o frontend (Node.js 18 Alpine).
+- `backend/.dockerignore` e `frontend/.dockerignore`: arquivos ignorados no build.
+- `docker-compose.yml`: para testar localmente com Docker Compose.
+
+### Variáveis de ambiente
+
+- `PORT`: porta que o container deve escutar (Cloud Run fornece automaticamente).
+- `STRATEGY`: estratégia a iniciar (`arbitrage`, `cross-market`, `market-making`).
+- `MONGODB_URI`: string de conexão com o MongoDB (obrigatória para funcionalidades de usuário).
+- Outras variáveis conforme necessário (ex: chaves de API das exchanges).
+
+### Build e execução local com Docker Compose
+
+```bash
+docker-compose up --build
+```
+
+### Deploy no Google Cloud Run
+
+1. Build e push da imagem (exemplo com Google Artifact Registry):
+
+```bash
+# Backend
+gcloud builds submit --tag gcr.io/SEU_PROJETO/backend ./backend
+gcloud run deploy backend \
+  --image gcr.io/SEU_PROJETO/backend \
+  --platform managed \
+  --region us-central1 \
+  --allow-unauthenticated \
+  --set-env-vars STRATEGY=arbitrage,MONGODB_URI=sua_uri
+
+# Frontend
+gcloud builds submit --tag gcr.io/SEU_PROJETO/frontend ./frontend
+gcloud run deploy frontend \
+  --image gcr.io/SEU_PROJETO/frontend \
+  --platform managed \
+  --region us-central1 \
+  --allow-unauthenticated
+```
+
+Substitua `SEU_PROJETO` pelo ID do seu projeto no Google Cloud e ajuste a região conforme necessário.
